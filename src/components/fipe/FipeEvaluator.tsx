@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useFipeApi } from '@/hooks/useFipeApi';
 import { VehicleType, FipeHistoryItem } from '@/lib/constants';
 import { toast } from '@/hooks/use-toast';
+import { PriceComparison } from './PriceComparison';
 
 interface FipeEvaluatorProps {
   onSaveToHistory: (item: FipeHistoryItem) => void;
@@ -169,8 +170,8 @@ export function FipeEvaluator({ onSaveToHistory }: FipeEvaluatorProps) {
         </div>
       )}
 
-      {/* Result Card */}
       {result && (
+        <>
         <Card className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground border-0 shadow-2xl animate-fade-in overflow-hidden">
           <CardContent className="p-6">
             <div className="flex justify-between items-start mb-4">
@@ -231,7 +232,11 @@ export function FipeEvaluator({ onSaveToHistory }: FipeEvaluatorProps) {
             </div>
           </CardContent>
         </Card>
-      )}
+
+        {/* Price Comparison */}
+        <PriceComparison fipeValue={result.Valor} />
+      </>
+    )}
 
       {/* Empty State */}
       {!result && !loading && (
