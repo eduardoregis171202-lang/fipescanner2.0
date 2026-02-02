@@ -3,6 +3,7 @@ import { Header } from '@/components/fipe/Header';
 import { Navigation } from '@/components/fipe/Navigation';
 import { FipeEvaluator } from '@/components/fipe/FipeEvaluator';
 import { DetranHub } from '@/components/fipe/DetranHub';
+import { CompareList } from '@/components/fipe/CompareList';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { HistoryItem, FipeHistoryItem } from '@/lib/constants';
@@ -26,6 +27,12 @@ const Index = () => {
     return saved ? JSON.parse(saved) : [];
   });
 
+  // Compare List
+  const [compareList, setCompareList] = useState<FipeHistoryItem[]>(() => {
+    const saved = localStorage.getItem('compare_list');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   // Track last saved FIPE result to avoid duplicates
   const lastSavedFipe = useRef<string | null>(null);
 
@@ -38,6 +45,11 @@ const Index = () => {
   useEffect(() => {
     localStorage.setItem('fipe_history', JSON.stringify(fipeHistory));
   }, [fipeHistory]);
+
+  // Persist Compare list
+  useEffect(() => {
+    localStorage.setItem('compare_list', JSON.stringify(compareList));
+  }, [compareList]);
 
   const handleDetranHistoryUpdate = (items: HistoryItem[]) => {
     setDetranHistory(items);
@@ -57,13 +69,43 @@ const Index = () => {
     });
   };
 
+  const handleClearFipeHistory = () => {
+    setFipeHistory([]);
+    lastSavedFipe.current = null;
+  };
+
+  const handleAddToCompare = (item: FipeHistoryItem) => {
+    setCompareList(prev => {
+      // Already in list?
+      const exists = prev.some(c => 
+        c.codigoFipe === item.codigoFipe && c.year === item.year
+      );
+      if (exists || prev.length >= 3) return prev;
+      return [...prev, item];
+    });
+  };
+
+  const handleRemoveFromCompare = (index: number) => {
+    setCompareList(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleClearCompare = () => {
+    setCompareList([]);
+  };
+
   return (
     <div className="flex flex-col min-h-screen max-w-md mx-auto bg-background text-foreground shadow-2xl relative overflow-hidden">
       <Header isDark={isDark} toggleDark={toggleDark} isOnline={isOnline} />
 
       <main className="flex-1 overflow-y-auto pb-24 hide-scrollbar">
         {activeTab === 'evaluator' ? (
-          <FipeEvaluator onSaveToHistory={handleFipeSave} />
+          <FipeEvaluator 
+            onSaveToHistory={handleFipeSave}
+            history={fipeHistory}
+            onClearHistory={handleClearFipeHistory}
+            onAddToCompare={handleAddToCompare}
+            compareList={compareList}
+          />
         ) : (
           <DetranHub
             history={detranHistory}
@@ -73,6 +115,13 @@ const Index = () => {
       </main>
 
       <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
+
+      {/* Compare List Floating Bar */}
+      <CompareList
+        items={compareList}
+        onRemove={handleRemoveFromCompare}
+        onClear={handleClearCompare}
+      />
     </div>
   );
 };

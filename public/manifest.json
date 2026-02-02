@@ -1,0 +1,25 @@
+{
+  "name": "Fipe Scanner",
+  "short_name": "FipeScanner",
+  "description": "Consulte o valor FIPE de veículos e acesse portais DETRAN",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0A0A0A",
+  "theme_color": "#6366F1",
+  "categories": ["utilities", "finance"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

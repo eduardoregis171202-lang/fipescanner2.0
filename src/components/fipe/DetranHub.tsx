@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { usePlateDetection } from '@/hooks/usePlateDetection';
 import { useDebounce } from '@/hooks/useDebounce';
 import { DETRAN_URLS, HistoryItem } from '@/lib/constants';
+import { DocumentChecklist } from './DocumentChecklist';
 
 interface DetranHubProps {
   history: HistoryItem[];
@@ -142,6 +143,9 @@ export function DetranHub({ history, onHistoryUpdate }: DetranHubProps) {
           </div>
         </div>
       )}
+
+      {/* Document Checklist */}
+      <DocumentChecklist />
 
       {/* Empty State */}
       {history.length === 0 && (
