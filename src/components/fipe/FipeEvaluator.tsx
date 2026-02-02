@@ -9,6 +9,7 @@ import { PriceComparison } from './PriceComparison';
 import { FinancingCalculator } from './FinancingCalculator';
 import { SearchableSelect } from './SearchableSelect';
 import { FipeHistory } from './FipeHistory';
+import { PriceHistoryChart } from './PriceHistoryChart';
 
 interface FipeEvaluatorProps {
   onSaveToHistory: (item: FipeHistoryItem) => void;
@@ -276,6 +277,13 @@ export function FipeEvaluator({
               </div>
             </CardContent>
           </Card>
+
+          {/* Price History Chart */}
+          <PriceHistoryChart 
+            currentValue={result.Valor}
+            modelName={result.Modelo}
+            yearModel={result.AnoModelo}
+          />
 
           {/* Price Comparison */}
           <PriceComparison fipeValue={result.Valor} />
