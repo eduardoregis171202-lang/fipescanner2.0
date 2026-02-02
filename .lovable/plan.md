@@ -1,135 +1,132 @@
 
-# 🚗 Plano de Melhorias - Fipe Scanner PWA
 
-## Visão Geral
-Refatorar completamente o app Fipe Scanner para ser um PWA funcional, corrigir todos os bugs identificados, melhorar visual e adicionar novas funcionalidades - tudo em um único arquivo HTML otimizado.
+# Plano de Implementacao - Comparador de Precos e Atualizacao DETRAN
 
----
+## Resumo
 
-## Fase 1: Correção de Bugs Críticos
-
-### 1.1 Corrigir lógica de reset de seleção
-- Quando trocar tipo de veículo, resetar também modelo, ano e anos selecionados
-- Evitar estados inconsistentes entre marca/modelo/ano
-
-### 1.2 Tratamento de erros na API FIPE
-- Adicionar try/catch com mensagens amigáveis ao usuário
-- Mostrar toast/alerta quando API falhar
-- Retry automático em caso de timeout
-
-### 1.3 Corrigir chave localStorage
-- Renomear para `detran_history` (histórico DETRAN)
-- Criar `fipe_history` separado para consultas FIPE
-
-### 1.4 Remover componente Icon não utilizado
-- Limpar código morto
-- Padronizar uso de `data-lucide` em todo app
-
-### 1.5 Expandir tabela de placas
-- Completar PLATE_RANGES para cobrir todas as UFs brasileiras
-- Adicionar fallback quando placa não é detectada
+Este plano implementa duas funcionalidades solicitadas:
+1. **Comparador de Preco de Anuncio** - Campo para inserir o preco do anuncio e comparar com o valor FIPE
+2. **Atualizacao dos Links DETRAN** - Novos URLs conforme fornecidos pelo usuario
 
 ---
 
-## Fase 2: Implementação PWA (Single HTML)
+## Parte 1: Comparador de Preco de Anuncio
 
-### 2.1 Manifest inline via JavaScript
-- Criar manifest.json dinamicamente usando Blob URL
-- Injetar `<link rel="manifest">` no head
+### O que sera feito
 
-### 2.2 Service Worker inline
-- Registrar Service Worker a partir de Blob
-- Cache de arquivos CDN (Tailwind, React, Lucide)
-- Cache de respostas da API FIPE para uso offline
+Apos o resultado FIPE aparecer, um novo campo permitira que o usuario digite o preco do anuncio. O app calculara automaticamente a diferenca e mostrara uma avaliacao visual:
 
-### 2.3 Meta tags para PWA
-- Apple touch icon (emoji ou SVG inline)
-- Theme-color, viewport, description
-- Status bar style para iOS
+- **Muito Abaixo** (verde): preco do anuncio ate 10% menor que FIPE
+- **Preco Justo** (azul): preco do anuncio entre -10% e +5% do FIPE
+- **Acima** (amarelo): preco do anuncio entre +5% e +15% do FIPE
+- **Muito Acima** (vermelho): preco do anuncio mais de 15% acima do FIPE
 
-### 2.4 Funcionalidade offline
-- Mostrar dados cacheados quando offline
-- Indicador de status de conexão
-- Histórico disponível offline
+### Visual do Comparador
 
----
+```text
++------------------------------------------+
+|  PRECO DO ANUNCIO                        |
+|  +------------------------------------+  |
+|  | R$ 45.000,00                       |  |
+|  +------------------------------------+  |
+|                                          |
+|  +------------------------------------+  |
+|  |  [icone]  MUITO ABAIXO DA FIPE     |  |
+|  |  Economia de R$ 3.500 (-7.2%)      |  |
+|  +------------------------------------+  |
++------------------------------------------+
+```
 
-## Fase 3: Melhorias Visuais
+### Arquivos a modificar
 
-### 3.1 Loading states aprimorados
-- Skeleton loading nos selects enquanto carrega
-- Animação suave na transição de resultados
-- Spinner consistente em todas as áreas
-
-### 3.2 Estados vazios
-- Ilustração quando não há histórico
-- Mensagem de boas-vindas na primeira consulta
-
-### 3.3 Feedback visual
-- Toast de sucesso ao copiar/compartilhar
-- Toast de erro quando API falha
-- Animação ao detectar UF automaticamente
-
-### 3.4 Polimento do design
-- Micro-interações nos botões
-- Hover states mais refinados
-- Gradientes e sombras mais suaves
+**src/components/fipe/FipeEvaluator.tsx**
+- Adicionar estado para `announcedPrice` (string formatada)
+- Criar funcao `parsePrice` para converter "R$ 45.000" em numero
+- Criar funcao `calculateDifference` para comparar valores
+- Adicionar componente de input com mascara de moeda
+- Adicionar card de resultado da comparacao com cores e icones
 
 ---
 
-## Fase 4: Novas Funcionalidades
+## Parte 2: Atualizacao dos Links DETRAN
 
-### 4.1 Histórico de consultas FIPE
-- Salvar últimas 10 consultas FIPE
-- Acesso rápido para reconsultar
-- Comparar preços de diferentes veículos
+### Novos URLs
 
-### 4.2 Botão de compartilhar resultado
-- Web Share API para compartilhar valor FIPE
-- Gerar imagem do resultado (canvas)
-- Copiar valor para área de transferência
+Todos os 27 estados serao atualizados com os links fornecidos:
 
-### 4.3 Modo escuro
-- Toggle dark/light mode
-- Respeitar preferência do sistema
-- Salvar preferência no localStorage
+| UF | URL Atualizado |
+|----|----------------|
+| AC | https://www.detran.ac.gov.br/ |
+| AL | https://www.detran.al.gov.br/servicos-veiculos/ |
+| AM | https://www.detran.am.gov.br |
+| AP | https://www.detran.ap.gov.br |
+| BA | https://www.detran.ba.gov.br |
+| CE | https://sistemas.detran.ce.gov.br/meudetran/ |
+| DF | https://www.detran.df.gov.br |
+| ES | https://www.detran.es.gov.br |
+| GO | https://www.detran.go.gov.br |
+| MA | https://www.detran.ma.gov.br |
+| MG | https://www.detran.mg.gov.br |
+| MS | https://www.detran.ms.gov.br |
+| MT | https://www.detran.mt.gov.br |
+| PA | https://www.detran.pa.gov.br |
+| PB | https://www.detran.pb.gov.br |
+| PE | https://www.detran.pe.gov.br |
+| PI | https://www.detran.pi.gov.br |
+| PR | https://www.detran.pr.gov.br |
+| RJ | https://www.detran.rj.gov.br |
+| RN | https://www.detran.rn.gov.br |
+| RO | https://www.detran.ro.gov.br |
+| RR | https://www.detran.rr.gov.br |
+| RS | https://www.detran.rs.gov.br |
+| SC | https://www.detran.sc.gov.br |
+| SE | https://www.detran.se.gov.br |
+| SP | https://www.detran.sp.gov.br |
+| TO | https://www.detran.to.gov.br |
 
-### 4.4 Instalação do PWA
-- Banner "Adicionar à tela inicial"
-- Detectar se já está instalado
-- Instruções para iOS/Android
+### Arquivo a modificar
 
-### 4.5 Busca por código FIPE
-- Campo para digitar código FIPE diretamente
-- Consulta reversa do veículo
-
----
-
-## Fase 5: Otimizações
-
-### 5.1 Performance
-- Debounce na digitação da placa
-- Memoização de componentes pesados
-- Lazy loading de dados
-
-### 5.2 Acessibilidade
-- Labels corretos em todos os campos
-- Navegação por teclado
-- Contraste adequado de cores
-
-### 5.3 SEO e Open Graph
-- Meta tags para compartilhamento social
-- Título e descrição otimizados
+**src/lib/constants.ts**
+- Atualizar objeto `DETRAN_URLS` com todos os novos links
 
 ---
 
-## Entregável Final
-Um único arquivo `index.html` contendo:
-- App React completo com todas as funcionalidades
-- PWA funcional instalável
-- Service Worker inline para cache offline
-- Design profissional e responsivo
-- Sem dependências externas obrigatórias (CDNs como fallback)
+## Detalhes Tecnicos
 
-O arquivo estará pronto para hospedar no **GitHub Pages** ou qualquer servidor estático.
+### Logica de Comparacao de Preco
+
+```text
+diferenca = (precoAnuncio - valorFipe) / valorFipe * 100
+
+Se diferenca <= -10%  -> MUITO ABAIXO (otimo negocio)
+Se diferenca <= +5%   -> PRECO JUSTO
+Se diferenca <= +15%  -> ACIMA
+Se diferenca > +15%   -> MUITO ACIMA (evitar)
+```
+
+### Mascara de Moeda
+
+O campo de preco tera formatacao automatica:
+- Ao digitar "45000" mostra "R$ 45.000,00"
+- Aceita apenas numeros
+- Remove formatacao para calculos internos
+
+### Cores e Icones por Resultado
+
+| Avaliacao | Cor | Icone |
+|-----------|-----|-------|
+| Muito Abaixo | Verde (bg-green-500) | TrendingDown |
+| Preco Justo | Azul (bg-blue-500) | CheckCircle |
+| Acima | Amarelo (bg-yellow-500) | TrendingUp |
+| Muito Acima | Vermelho (bg-red-500) | AlertTriangle |
+
+---
+
+## Resultado Final
+
+O usuario podera:
+1. Consultar valor FIPE normalmente
+2. Digitar o preco do anuncio que encontrou
+3. Ver instantaneamente se o preco esta bom ou ruim
+4. Ter acesso aos links corretos dos DETRANs de cada estado
 
