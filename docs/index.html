@@ -1,0 +1,2714 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Fipe Scanner - Consulta Tabela FIPE e DETRAN</title>
+  <meta name="description" content="Consulte o valor FIPE de carros, motos e caminhões. Acesse rapidamente o portal DETRAN do seu estado pela placa do veículo.">
+  <meta name="theme-color" content="#3B82F6">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Fipe Scanner">
+  
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  
+  <style>
+    :root {
+      --background: 210 40% 98%;
+      --foreground: 222 84% 5%;
+      --card: 0 0% 100%;
+      --card-foreground: 222 84% 5%;
+      --primary: 217 91% 60%;
+      --primary-foreground: 210 40% 98%;
+      --secondary: 210 40% 96%;
+      --secondary-foreground: 222 47% 11%;
+      --muted: 210 40% 96%;
+      --muted-foreground: 215 16% 47%;
+      --accent: 142 71% 45%;
+      --accent-foreground: 210 40% 98%;
+      --destructive: 0 84% 60%;
+      --border: 214 32% 91%;
+      --radius: 0.75rem;
+    }
+
+    .dark {
+      --background: 222 84% 5%;
+      --foreground: 210 40% 98%;
+      --card: 222 47% 11%;
+      --card-foreground: 210 40% 98%;
+      --primary: 217 91% 60%;
+      --primary-foreground: 222 84% 5%;
+      --secondary: 217 33% 17%;
+      --secondary-foreground: 210 40% 98%;
+      --muted: 217 33% 17%;
+      --muted-foreground: 215 20% 65%;
+      --accent: 142 71% 45%;
+      --accent-foreground: 222 84% 5%;
+      --border: 217 33% 17%;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app {
+      max-width: 448px;
+      margin: 0 auto;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: hsl(var(--background));
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Header */
+    .header {
+      padding: 1rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid hsl(var(--border));
+      background: hsl(var(--card));
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .logo {
+      width: 2.5rem;
+      height: 2.5rem;
+      background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+      border-radius: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 900;
+      font-size: 1rem;
+    }
+
+    .header-title {
+      font-size: 1.125rem;
+      font-weight: 800;
+      color: hsl(var(--foreground));
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.625rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .status-online {
+      background: hsl(var(--accent) / 0.1);
+      color: hsl(var(--accent));
+    }
+
+    .status-offline {
+      background: hsl(var(--destructive) / 0.1);
+      color: hsl(var(--destructive));
+    }
+
+    .status-dot {
+      width: 0.375rem;
+      height: 0.375rem;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .theme-btn {
+      width: 2.25rem;
+      height: 2.25rem;
+      border-radius: 0.5rem;
+      border: none;
+      background: hsl(var(--muted));
+      color: hsl(var(--foreground));
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.125rem;
+    }
+
+    /* Main Content */
+    .main {
+      flex: 1;
+      overflow-y: auto;
+      padding-bottom: 6rem;
+    }
+
+    .main::-webkit-scrollbar {
+      display: none;
+    }
+
+    .content {
+      padding: 1rem;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* Navigation */
+    .nav {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 448px;
+      background: hsl(var(--card) / 0.95);
+      backdrop-filter: blur(12px);
+      border-top: 1px solid hsl(var(--border));
+      padding: 0.75rem 1rem;
+      display: flex;
+      gap: 0.5rem;
+      z-index: 40;
+    }
+
+    .nav-btn {
+      flex: 1;
+      padding: 0.75rem;
+      border-radius: 1rem;
+      border: none;
+      background: transparent;
+      color: hsl(var(--muted-foreground));
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.625rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      transition: all 0.2s;
+    }
+
+    .nav-btn.active {
+      background: hsl(var(--primary));
+      color: hsl(var(--primary-foreground));
+      box-shadow: 0 4px 15px hsl(var(--primary) / 0.4);
+    }
+
+    .nav-icon {
+      font-size: 1.25rem;
+    }
+
+    /* Vehicle Type Selector */
+    .vehicle-types {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .vehicle-btn {
+      flex: 1;
+      padding: 0.75rem;
+      border-radius: 0.75rem;
+      border: 1px solid hsl(var(--border));
+      background: hsl(var(--card));
+      color: hsl(var(--muted-foreground));
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      transition: all 0.2s;
+    }
+
+    .vehicle-btn.active {
+      background: hsl(var(--primary));
+      color: hsl(var(--primary-foreground));
+      border-color: hsl(var(--primary));
+      box-shadow: 0 4px 12px hsl(var(--primary) / 0.3);
+    }
+
+    /* Select */
+    .select-group {
+      margin-bottom: 1rem;
+    }
+
+    .select-label {
+      display: block;
+      font-size: 0.625rem;
+      font-weight: 700;
+      color: hsl(var(--muted-foreground));
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+    }
+
+    .select {
+      width: 100%;
+      padding: 1rem;
+      border-radius: 0.75rem;
+      border: 1px solid hsl(var(--border));
+      background: hsl(var(--card));
+      color: hsl(var(--foreground));
+      font-size: 0.875rem;
+      font-weight: 600;
+      outline: none;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+
+    .select:focus {
+      border-color: hsl(var(--primary));
+    }
+
+    .select:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Result Card */
+    .result-card {
+      background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.8));
+      color: hsl(var(--primary-foreground));
+      border-radius: 1rem;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 20px 25px -5px hsl(var(--primary) / 0.3);
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 1rem;
+    }
+
+    .result-badge {
+      background: hsl(var(--accent) / 0.2);
+      color: hsl(var(--accent));
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.625rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+      display: inline-block;
+    }
+
+    .result-value {
+      font-size: 1.875rem;
+      font-weight: 900;
+    }
+
+    .result-icon {
+      font-size: 2.5rem;
+      opacity: 0.2;
+    }
+
+    .result-details {
+      border-top: 1px solid hsl(var(--primary-foreground) / 0.1);
+      padding-top: 1rem;
+      font-size: 0.875rem;
+    }
+
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.375rem 0;
+    }
+
+    .result-row span:last-child {
+      font-weight: 700;
+      text-align: right;
+      max-width: 60%;
+    }
+
+    .result-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid hsl(var(--primary-foreground) / 0.1);
+    }
+
+    .action-btn {
+      flex: 1;
+      padding: 0.625rem;
+      border-radius: 0.5rem;
+      border: none;
+      background: hsl(var(--primary-foreground) / 0.1);
+      color: hsl(var(--primary-foreground));
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.375rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+
+    .action-btn:hover {
+      background: hsl(var(--primary-foreground) / 0.2);
+    }
+
+    .action-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Cards */
+    .card {
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: 1rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .card-title {
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: hsl(var(--foreground));
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .card-content {
+      padding: 0 1.5rem 1.5rem;
+    }
+
+    /* Chart Container */
+    .chart-container {
+      height: 12rem;
+      margin-bottom: 1rem;
+    }
+
+    .trend-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+    }
+
+    .trend-up { color: #22c55e; }
+    .trend-down { color: #ef4444; }
+    .trend-stable { color: hsl(var(--muted-foreground)); }
+
+    .disclaimer {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      padding: 0.75rem;
+      background: hsl(var(--muted) / 0.5);
+      border-radius: 0.5rem;
+      font-size: 0.625rem;
+      color: hsl(var(--muted-foreground));
+      line-height: 1.5;
+    }
+
+    .toggle-btn {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 0.5rem;
+      border: none;
+      background: transparent;
+      color: hsl(var(--muted-foreground));
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Price Comparison */
+    .input-group {
+      margin-bottom: 1rem;
+    }
+
+    .input {
+      width: 100%;
+      padding: 0.875rem 1rem;
+      border-radius: 0.75rem;
+      border: 1px solid hsl(var(--border));
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
+      font-size: 1.125rem;
+      font-weight: 600;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .input:focus {
+      border-color: hsl(var(--primary));
+    }
+
+    .comparison-result {
+      border-radius: 0.75rem;
+      padding: 1rem;
+      color: white;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    .comparison-result.muito_abaixo { background: #22c55e; }
+    .comparison-result.justo { background: #3b82f6; }
+    .comparison-result.acima { background: #eab308; }
+    .comparison-result.muito_acima { background: #ef4444; }
+
+    .comparison-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+      font-weight: 700;
+      font-size: 1.125rem;
+    }
+
+    .comparison-desc {
+      font-size: 0.875rem;
+      opacity: 0.9;
+      margin-bottom: 0.75rem;
+    }
+
+    .comparison-details {
+      background: rgba(255,255,255,0.2);
+      border-radius: 0.5rem;
+      padding: 0.75rem;
+    }
+
+    .comparison-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.875rem;
+      padding: 0.25rem 0;
+    }
+
+    .comparison-row span:last-child {
+      font-weight: 700;
+    }
+
+    /* Slider */
+    .slider-container {
+      margin-bottom: 1.5rem;
+    }
+
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .slider-label {
+      font-size: 0.625rem;
+      font-weight: 700;
+      color: hsl(var(--muted-foreground));
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .slider-value {
+      text-align: right;
+    }
+
+    .slider-value .big {
+      font-size: 1.125rem;
+      font-weight: 900;
+    }
+
+    .slider-value .small {
+      font-size: 0.75rem;
+      color: hsl(var(--muted-foreground));
+      margin-left: 0.5rem;
+    }
+
+    .slider {
+      width: 100%;
+      height: 0.5rem;
+      border-radius: 0.25rem;
+      background: hsl(var(--muted));
+      outline: none;
+      -webkit-appearance: none;
+    }
+
+    .slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 1.25rem;
+      height: 1.25rem;
+      border-radius: 50%;
+      background: hsl(var(--primary));
+      cursor: pointer;
+      box-shadow: 0 2px 6px hsl(var(--primary) / 0.4);
+    }
+
+    .slider-range {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.625rem;
+      color: hsl(var(--muted-foreground));
+      margin-top: 0.5rem;
+    }
+
+    /* Installment Buttons */
+    .installments {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .installment-btn {
+      flex: 1;
+      padding: 0.625rem;
+      border-radius: 0.75rem;
+      border: none;
+      background: hsl(var(--muted));
+      color: hsl(var(--muted-foreground));
+      font-size: 0.875rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .installment-btn.active {
+      background: hsl(var(--primary));
+      color: hsl(var(--primary-foreground));
+      transform: scale(1.05);
+      box-shadow: 0 4px 12px hsl(var(--primary) / 0.3);
+    }
+
+    /* Financing Result */
+    .financing-result {
+      background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.8));
+      border-radius: 1rem;
+      padding: 1.25rem;
+      color: hsl(var(--primary-foreground));
+    }
+
+    .financing-monthly {
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+
+    .financing-monthly .label {
+      font-size: 0.75rem;
+      opacity: 0.8;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .financing-monthly .value {
+      font-size: 1.875rem;
+      font-weight: 900;
+    }
+
+    .financing-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid hsl(var(--primary-foreground) / 0.2);
+    }
+
+    .financing-item .label {
+      font-size: 0.625rem;
+      opacity: 0.7;
+      text-transform: uppercase;
+    }
+
+    .financing-item .value {
+      font-weight: 700;
+    }
+
+    .financing-interest {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 0.75rem;
+      margin-top: 0.75rem;
+      border-top: 1px solid hsl(var(--primary-foreground) / 0.2);
+    }
+
+    .financing-interest .label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      opacity: 0.8;
+    }
+
+    .financing-interest .value {
+      font-weight: 700;
+      color: hsl(var(--accent));
+    }
+
+    .warning-box {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      padding: 0.75rem;
+      background: rgba(234, 179, 8, 0.1);
+      border: 1px solid rgba(234, 179, 8, 0.2);
+      border-radius: 0.75rem;
+      margin-top: 1rem;
+      font-size: 0.625rem;
+      color: #ca8a04;
+      line-height: 1.5;
+    }
+
+    .dark .warning-box {
+      color: #facc15;
+    }
+
+    /* Plate Input */
+    .plate-input {
+      width: 100%;
+      padding: 1.5rem 1rem;
+      border-radius: 1rem;
+      border: 2px solid hsl(var(--border));
+      background: hsl(var(--muted));
+      color: hsl(var(--foreground));
+      font-size: 2.25rem;
+      font-family: monospace;
+      font-weight: 700;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .plate-input:focus {
+      border-color: hsl(var(--primary));
+      background: hsl(var(--card));
+      box-shadow: 0 4px 20px hsl(var(--primary) / 0.2);
+    }
+
+    .plate-input.valid {
+      border-color: hsl(var(--primary));
+      background: hsl(var(--card));
+    }
+
+    .uf-detected {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      background: hsl(var(--primary) / 0.1);
+      border: 1px solid hsl(var(--primary) / 0.2);
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.6875rem;
+      font-weight: 800;
+      color: hsl(var(--primary));
+      text-transform: uppercase;
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 1rem 1.5rem;
+      border-radius: 1rem;
+      border: none;
+      background: hsl(var(--primary));
+      color: hsl(var(--primary-foreground));
+      font-size: 0.875rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      transition: opacity 0.2s;
+    }
+
+    .btn-primary:hover {
+      opacity: 0.9;
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* History */
+    .history-section {
+      margin-top: 1.5rem;
+    }
+
+    .history-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+
+    .history-title {
+      font-size: 0.625rem;
+      font-weight: 700;
+      color: hsl(var(--muted-foreground));
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .history-clear {
+      font-size: 0.625rem;
+      color: hsl(var(--muted-foreground));
+      background: none;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .history-clear:hover {
+      color: hsl(var(--destructive));
+    }
+
+    .history-item {
+      width: 100%;
+      background: hsl(var(--card));
+      padding: 1rem;
+      border-radius: 1rem;
+      border: 1px solid hsl(var(--border));
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 0.5rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: left;
+    }
+
+    .history-item:hover {
+      border-color: hsl(var(--primary) / 0.5);
+      box-shadow: 0 4px 12px hsl(var(--primary) / 0.1);
+    }
+
+    .history-badge {
+      width: 3rem;
+      height: 3rem;
+      background: linear-gradient(135deg, hsl(var(--primary) / 0.2), hsl(var(--primary) / 0.05));
+      border-radius: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.625rem;
+      font-weight: 900;
+      color: hsl(var(--primary));
+      border: 1px solid hsl(var(--primary) / 0.1);
+      flex-shrink: 0;
+    }
+
+    .history-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .history-model {
+      font-weight: 700;
+      font-size: 0.875rem;
+      color: hsl(var(--foreground));
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .history-model .year {
+      font-size: 0.625rem;
+      color: hsl(var(--muted-foreground));
+      background: hsl(var(--muted));
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+    }
+
+    .history-value {
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: hsl(var(--primary));
+      margin-top: 0.25rem;
+    }
+
+    /* Checklist */
+    .progress-bar {
+      height: 0.5rem;
+      background: hsl(var(--muted));
+      border-radius: 0.25rem;
+      overflow: hidden;
+      margin-bottom: 0.5rem;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: hsl(var(--primary));
+      transition: width 0.3s ease;
+    }
+
+    .progress-text {
+      text-align: center;
+      font-size: 0.625rem;
+      color: hsl(var(--muted-foreground));
+    }
+
+    .checklist-items {
+      margin-top: 1rem;
+    }
+
+    .checklist-item {
+      border-radius: 0.75rem;
+      border: 1px solid hsl(var(--border));
+      background: hsl(var(--card));
+      margin-bottom: 0.5rem;
+      overflow: hidden;
+      transition: all 0.2s;
+    }
+
+    .checklist-item.checked {
+      background: hsl(var(--primary) / 0.05);
+      border-color: hsl(var(--primary) / 0.2);
+    }
+
+    .checklist-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 1rem;
+      cursor: pointer;
+      width: 100%;
+      background: none;
+      border: none;
+      text-align: left;
+      color: inherit;
+    }
+
+    .checklist-checkbox {
+      width: 1.5rem;
+      height: 1.5rem;
+      border-radius: 0.5rem;
+      border: 2px solid hsl(var(--muted-foreground) / 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.2s;
+    }
+
+    .checklist-item.checked .checklist-checkbox {
+      background: hsl(var(--primary));
+      border-color: hsl(var(--primary));
+      color: hsl(var(--primary-foreground));
+    }
+
+    .checklist-title {
+      flex: 1;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: hsl(var(--foreground));
+      transition: all 0.2s;
+    }
+
+    .checklist-item.checked .checklist-title {
+      color: hsl(var(--primary));
+      text-decoration: line-through;
+      opacity: 0.7;
+    }
+
+    .checklist-info {
+      padding: 0.25rem;
+      border-radius: 9999px;
+      color: hsl(var(--muted-foreground));
+    }
+
+    .checklist-desc {
+      padding: 0 1rem 1rem;
+      padding-left: 3.25rem;
+      font-size: 0.75rem;
+      color: hsl(var(--muted-foreground));
+      line-height: 1.5;
+    }
+
+    /* Compare Bar */
+    .compare-bar {
+      position: fixed;
+      bottom: 5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 2rem);
+      max-width: 416px;
+      background: hsl(var(--card) / 0.95);
+      backdrop-filter: blur(12px);
+      border: 1px solid hsl(var(--border));
+      border-radius: 1rem;
+      padding: 1rem;
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+      z-index: 30;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    .compare-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+
+    .compare-title {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: hsl(var(--foreground));
+      text-transform: uppercase;
+    }
+
+    .compare-clear {
+      font-size: 0.625rem;
+      color: hsl(var(--muted-foreground));
+      background: none;
+      border: none;
+      cursor: pointer;
+    }
+
+    .compare-items {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .compare-item {
+      flex: 1;
+      background: hsl(var(--muted));
+      border-radius: 0.75rem;
+      padding: 0.625rem;
+      position: relative;
+    }
+
+    .compare-item-remove {
+      position: absolute;
+      top: -0.375rem;
+      right: -0.375rem;
+      width: 1.25rem;
+      height: 1.25rem;
+      border-radius: 50%;
+      background: hsl(var(--destructive));
+      color: white;
+      border: none;
+      font-size: 0.625rem;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .compare-item:hover .compare-item-remove {
+      display: flex;
+    }
+
+    .compare-item-model {
+      font-size: 0.625rem;
+      font-weight: 700;
+      color: hsl(var(--foreground));
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .compare-item-year {
+      font-size: 0.625rem;
+      color: hsl(var(--muted-foreground));
+    }
+
+    .compare-item-value {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: hsl(var(--primary));
+      margin-top: 0.25rem;
+    }
+
+    .compare-empty {
+      flex: 1;
+      background: hsl(var(--muted) / 0.5);
+      border-radius: 0.75rem;
+      padding: 0.625rem;
+      border: 2px dashed hsl(var(--border));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: hsl(var(--muted-foreground) / 0.5);
+      font-size: 1rem;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: hsl(var(--background) / 0.95);
+      backdrop-filter: blur(12px);
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      animation: fadeIn 0.2s ease-out;
+    }
+
+    .modal-header {
+      padding: 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: hsl(var(--card));
+      border-bottom: 1px solid hsl(var(--border));
+    }
+
+    .modal-close {
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      color: hsl(var(--foreground));
+      font-size: 1.5rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-title {
+      font-size: 0.6875rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: hsl(var(--accent));
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .modal-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.5rem;
+    }
+
+    /* Compare Modal Content */
+    .compare-modal-items {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .compare-modal-item {
+      flex: 1;
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: 1rem;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .compare-modal-item.winner {
+      border-color: hsl(var(--accent));
+      box-shadow: 0 0 20px hsl(var(--accent) / 0.2);
+    }
+
+    .compare-modal-badge {
+      width: 3rem;
+      height: 3rem;
+      margin: 0 auto 0.75rem;
+      background: linear-gradient(135deg, hsl(var(--primary) / 0.2), hsl(var(--primary) / 0.05));
+      border-radius: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.5rem;
+      font-weight: 900;
+      color: hsl(var(--primary));
+    }
+
+    .compare-modal-model {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: hsl(var(--foreground));
+      margin-bottom: 0.25rem;
+    }
+
+    .compare-modal-year {
+      font-size: 0.625rem;
+      color: hsl(var(--muted-foreground));
+      margin-bottom: 0.5rem;
+    }
+
+    .compare-modal-value {
+      font-size: 1rem;
+      font-weight: 900;
+      color: hsl(var(--primary));
+    }
+
+    .compare-modal-winner-badge {
+      background: hsl(var(--accent));
+      color: hsl(var(--accent-foreground));
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.5rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-top: 0.5rem;
+      display: inline-block;
+    }
+
+    .compare-table {
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: 1rem;
+      overflow: hidden;
+    }
+
+    .compare-table-header {
+      background: hsl(var(--muted));
+      padding: 0.75rem 1rem;
+      display: grid;
+      gap: 0.5rem;
+      font-size: 0.625rem;
+      font-weight: 700;
+      color: hsl(var(--muted-foreground));
+      text-transform: uppercase;
+    }
+
+    .compare-table-row {
+      padding: 0.75rem 1rem;
+      display: grid;
+      gap: 0.5rem;
+      border-top: 1px solid hsl(var(--border));
+      font-size: 0.75rem;
+    }
+
+    .compare-table-row.highlight {
+      background: hsl(var(--accent) / 0.1);
+    }
+
+    .compare-table-row span:first-child {
+      color: hsl(var(--muted-foreground));
+    }
+
+    .compare-table-row span:not(:first-child) {
+      font-weight: 600;
+      text-align: center;
+    }
+
+    /* Detran Modal */
+    .detran-modal-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      text-align: center;
+    }
+
+    .detran-icon {
+      width: 6rem;
+      height: 6rem;
+      background: hsl(var(--primary));
+      color: hsl(var(--primary-foreground));
+      border-radius: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 3rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 25px 50px -12px hsl(var(--primary) / 0.4);
+    }
+
+    .detran-title {
+      font-size: 1.5rem;
+      font-weight: 900;
+      color: hsl(var(--foreground));
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+
+    .detran-desc {
+      font-size: 0.75rem;
+      color: hsl(var(--muted-foreground));
+      margin-bottom: 2rem;
+    }
+
+    .detran-link {
+      display: block;
+      width: 100%;
+      padding: 1.25rem;
+      border-radius: 1rem;
+      background: hsl(var(--primary));
+      color: hsl(var(--primary-foreground));
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+
+    .detran-cancel {
+      font-size: 0.6875rem;
+      font-weight: 800;
+      color: hsl(var(--muted-foreground));
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      background: none;
+      border: none;
+      cursor: pointer;
+    }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: hsl(var(--muted-foreground));
+    }
+
+    .empty-icon {
+      font-size: 4rem;
+      opacity: 0.2;
+      margin-bottom: 1rem;
+    }
+
+    .empty-text {
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    /* Loading */
+    .loading {
+      display: flex;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    .spinner {
+      width: 2rem;
+      height: 2rem;
+      border: 3px solid hsl(var(--muted));
+      border-top-color: hsl(var(--primary));
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      top: 1rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: 0.75rem;
+      padding: 0.75rem 1rem;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      animation: slideDown 0.3s ease-out;
+      max-width: 90%;
+    }
+
+    @keyframes slideDown {
+      from { transform: translateX(-50%) translateY(-100%); opacity: 0; }
+      to { transform: translateX(-50%) translateY(0); opacity: 1; }
+    }
+
+    .toast.success { border-color: hsl(var(--accent)); }
+    .toast.error { border-color: hsl(var(--destructive)); }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo">FS</div>
+        <h1 class="header-title">Fipe Scanner</h1>
+      </div>
+      <div class="header-right">
+        <div class="status-badge status-online" id="status-badge">
+          <span class="status-dot"></span>
+          <span id="status-text">Online</span>
+        </div>
+        <button class="theme-btn" id="theme-btn" title="Alternar tema">🌙</button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- FIPE Evaluator Tab -->
+      <div class="content" id="evaluator-tab">
+        <!-- Vehicle Type Selector -->
+        <div class="vehicle-types">
+          <button class="vehicle-btn active" data-type="carros">🚗 Carros</button>
+          <button class="vehicle-btn" data-type="motos">🏍️ Motos</button>
+          <button class="vehicle-btn" data-type="caminhoes">🚚 Caminhões</button>
+        </div>
+
+        <!-- Selects -->
+        <div class="select-group">
+          <label class="select-label">Marca</label>
+          <select class="select" id="brand-select" disabled>
+            <option value="">Carregando marcas...</option>
+          </select>
+        </div>
+
+        <div class="select-group">
+          <label class="select-label">Modelo</label>
+          <select class="select" id="model-select" disabled>
+            <option value="">Selecione a marca primeiro</option>
+          </select>
+        </div>
+
+        <div class="select-group">
+          <label class="select-label">Ano</label>
+          <select class="select" id="year-select" disabled>
+            <option value="">Selecione o modelo primeiro</option>
+          </select>
+        </div>
+
+        <!-- Loading -->
+        <div class="loading hidden" id="loading">
+          <div class="spinner"></div>
+        </div>
+
+        <!-- Result -->
+        <div id="result-container" class="hidden"></div>
+
+        <!-- Chart Section -->
+        <div class="card hidden" id="chart-section">
+          <div class="card-header">
+            <h3 class="card-title">📈 Evolução do Preço</h3>
+            <button class="toggle-btn" id="chart-toggle">▼</button>
+          </div>
+          <div class="card-content hidden" id="chart-content">
+            <div class="trend-badge" id="trend-badge"></div>
+            <div class="chart-container">
+              <canvas id="price-chart"></canvas>
+            </div>
+            <div class="disclaimer">
+              <span>ℹ️</span>
+              <p><strong>Simulação ilustrativa.</strong> A API FIPE não fornece histórico real. Valores estimados.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Price Comparison -->
+        <div class="card hidden" id="comparison-section">
+          <div class="card-header">
+            <h3 class="card-title">⚖️ Comparar Preço</h3>
+          </div>
+          <div class="card-content">
+            <div class="input-group">
+              <label class="select-label">Preço do Anúncio</label>
+              <input type="text" class="input" id="announced-price" placeholder="R$ 0,00" inputmode="numeric">
+            </div>
+            <div id="comparison-result"></div>
+          </div>
+        </div>
+
+        <!-- Financing Calculator -->
+        <div class="card hidden" id="financing-section">
+          <div class="card-header">
+            <h3 class="card-title">🧮 Simulador de Financiamento</h3>
+          </div>
+          <div class="card-content">
+            <p style="font-size: 0.625rem; color: hsl(var(--muted-foreground)); margin-bottom: 1rem;">Tabela Price • Taxa: 1,99% a.m.</p>
+            
+            <div class="slider-container">
+              <div class="slider-header">
+                <span class="slider-label">% Entrada</span>
+                <div class="slider-value">
+                  <span class="big" id="down-payment-percent">20%</span>
+                  <span class="small" id="down-payment-value">R$ 0,00</span>
+                </div>
+              </div>
+              <input type="range" class="slider" id="down-payment-slider" min="0" max="90" step="5" value="20">
+              <div class="slider-range">
+                <span>0%</span>
+                <span>90%</span>
+              </div>
+            </div>
+
+            <div class="slider-container">
+              <span class="slider-label">📅 Parcelas</span>
+              <div class="installments" id="installments">
+                <button class="installment-btn" data-months="12">12x</button>
+                <button class="installment-btn" data-months="24">24x</button>
+                <button class="installment-btn" data-months="36">36x</button>
+                <button class="installment-btn active" data-months="48">48x</button>
+                <button class="installment-btn" data-months="60">60x</button>
+              </div>
+            </div>
+
+            <div class="financing-result" id="financing-result">
+              <div class="financing-monthly">
+                <p class="label">Parcela Mensal</p>
+                <p class="value" id="monthly-payment">48x de R$ 0,00</p>
+              </div>
+              <div class="financing-grid">
+                <div class="financing-item">
+                  <p class="label">Total Financiado</p>
+                  <p class="value" id="financed-amount">R$ 0,00</p>
+                </div>
+                <div class="financing-item">
+                  <p class="label">Total a Pagar</p>
+                  <p class="value" id="total-amount">R$ 0,00</p>
+                </div>
+              </div>
+              <div class="financing-interest">
+                <span class="label">📈 Juros Totais</span>
+                <span class="value" id="total-interest">+ R$ 0,00</span>
+              </div>
+            </div>
+
+            <div class="warning-box">
+              <span>⚠️</span>
+              <p><strong>Simulação aproximada.</strong> Valores podem variar conforme instituição financeira e análise de crédito.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- FIPE History -->
+        <div class="history-section" id="fipe-history-section">
+          <div class="history-header">
+            <h3 class="history-title">🕒 Consultas Recentes</h3>
+            <button class="history-clear" id="clear-fipe-history">🗑️ Limpar</button>
+          </div>
+          <div id="fipe-history-list"></div>
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state" id="empty-state">
+          <div class="empty-icon">🚗</div>
+          <p class="empty-text">Selecione marca, modelo e ano para consultar o valor FIPE</p>
+        </div>
+      </div>
+
+      <!-- Detran Hub Tab -->
+      <div class="content hidden" id="detran-tab">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">🔍 Detran Hub</h3>
+            <div class="uf-detected hidden" id="uf-detected">
+              <span>✓</span>
+              <span id="detected-uf-text">SP detectado</span>
+            </div>
+          </div>
+          <div class="card-content">
+            <div class="input-group">
+              <input type="text" class="plate-input" id="plate-input" placeholder="ABC1D23" maxlength="7">
+            </div>
+
+            <div class="select-group">
+              <select class="select" id="uf-select">
+                <option value="">Selecione o Estado (UF)...</option>
+              </select>
+            </div>
+
+            <button class="btn-primary" id="detran-btn" disabled>
+              <span>🌐</span>
+              <span>Consultar</span>
+              <span>→</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Detran History -->
+        <div class="history-section" id="detran-history-section">
+          <div class="history-header">
+            <h3 class="history-title">🕒 Consultas Recentes</h3>
+          </div>
+          <div id="detran-history-list"></div>
+        </div>
+
+        <!-- Document Checklist -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">📋 Checklist de Compra</h3>
+            <div class="uf-detected" id="checklist-count">
+              <span>✓</span>
+              <span id="checklist-count-text">0/6</span>
+            </div>
+          </div>
+          <div class="card-content">
+            <div class="progress-bar">
+              <div class="progress-fill" id="checklist-progress" style="width: 0%"></div>
+            </div>
+            <p class="progress-text" id="checklist-status">6 item(s) pendente(s)</p>
+            
+            <div class="checklist-items" id="checklist-items"></div>
+          </div>
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state hidden" id="detran-empty-state">
+          <div class="empty-icon">🔍</div>
+          <p class="empty-text">Digite a placa do veículo para consultar</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- Navigation -->
+    <nav class="nav">
+      <button class="nav-btn active" data-tab="evaluator">
+        <span class="nav-icon">🚗</span>
+        <span>FIPE</span>
+      </button>
+      <button class="nav-btn" data-tab="detran">
+        <span class="nav-icon">🔍</span>
+        <span>DETRAN</span>
+      </button>
+    </nav>
+
+    <!-- Compare Bar -->
+    <div class="compare-bar hidden" id="compare-bar">
+      <div class="compare-header">
+        <span class="compare-title">⚖️ Comparar (<span id="compare-count">0</span>/3)</span>
+        <button class="compare-clear" id="clear-compare">Limpar</button>
+      </div>
+      <div class="compare-items" id="compare-items"></div>
+      <button class="btn-primary" id="compare-btn" disabled>⚖️ Comparar Veículos →</button>
+    </div>
+  </div>
+
+  <!-- Modals Container -->
+  <div id="modals"></div>
+
+  <script>
+    // ============= STATE =============
+    const state = {
+      vehicleType: 'carros',
+      brands: [],
+      models: [],
+      years: [],
+      selectedBrand: '',
+      selectedModel: '',
+      selectedYear: '',
+      result: null,
+      fipeHistory: JSON.parse(localStorage.getItem('fipe_history') || '[]'),
+      detranHistory: JSON.parse(localStorage.getItem('detran_history') || '[]'),
+      compareList: JSON.parse(localStorage.getItem('compare_list') || '[]'),
+      checklist: JSON.parse(localStorage.getItem('document_checklist') || '[]'),
+      isDark: localStorage.getItem('theme') === 'dark',
+      plate: '',
+      detectedUf: '',
+      downPayment: 20,
+      installments: 48,
+      priceChart: null
+    };
+
+    const API_BASE = 'https://parallelum.com.br/fipe/api/v1';
+
+    const DETRAN_URLS = {
+      AC: "https://www.detran.ac.gov.br/", AL: "https://www.detran.al.gov.br/servicos-veiculos/",
+      AP: "https://www.detran.ap.gov.br", AM: "https://www.detran.am.gov.br",
+      BA: "https://www.detran.ba.gov.br", CE: "https://sistemas.detran.ce.gov.br/meudetran/",
+      DF: "https://www.detran.df.gov.br", ES: "https://www.detran.es.gov.br",
+      GO: "https://www.detran.go.gov.br", MA: "https://www.detran.ma.gov.br",
+      MT: "https://www.detran.mt.gov.br", MS: "https://www.detran.ms.gov.br",
+      MG: "https://www.detran.mg.gov.br", PA: "https://www.detran.pa.gov.br",
+      PB: "https://www.detran.pb.gov.br", PR: "https://www.detran.pr.gov.br",
+      PE: "https://www.detran.pe.gov.br", PI: "https://www.detran.pi.gov.br",
+      RJ: "https://www.detran.rj.gov.br", RN: "https://www.detran.rn.gov.br",
+      RS: "https://www.detran.rs.gov.br", RO: "https://www.detran.ro.gov.br",
+      RR: "https://www.detran.rr.gov.br", SC: "https://www.detran.sc.gov.br",
+      SP: "https://www.detran.sp.gov.br", SE: "https://www.detran.se.gov.br",
+      TO: "https://www.detran.to.gov.br"
+    };
+
+    const PLATE_RANGES = [
+      { start: "MZN", end: "NAG", uf: "AC" }, { start: "MUX", end: "MZE", uf: "AL" },
+      { start: "NEI", end: "NFB", uf: "AP" }, { start: "JXW", end: "KBT", uf: "AM" },
+      { start: "NOA", end: "NPH", uf: "AM" }, { start: "JKK", end: "JSW", uf: "BA" },
+      { start: "OKI", end: "OLG", uf: "BA" }, { start: "HTA", end: "HTW", uf: "MS" },
+      { start: "LNI", end: "LNL", uf: "PI" }, { start: "BFA", end: "GKI", uf: "SP" },
+      { start: "GKJ", end: "HLM", uf: "MG" }, { start: "KAI", end: "KMC", uf: "MT" },
+      { start: "AAA", end: "BEZ", uf: "PR" }, { start: "KAV", end: "KFC", uf: "MT" },
+      { start: "HGP", end: "HKW", uf: "MG" }, { start: "KGU", end: "KMC", uf: "PE" },
+      { start: "OIA", end: "OIQ", uf: "CE" }, { start: "PBA", end: "PBZ", uf: "DF" },
+      { start: "KNB", end: "KRE", uf: "RJ" }, { start: "LVE", end: "LVZ", uf: "PI" },
+      { start: "MMW", end: "MNJ", uf: "PB" }, { start: "MOC", end: "MOU", uf: "TO" },
+      { start: "HNH", end: "HPR", uf: "MA" }, { start: "PSA", end: "PZJ", uf: "MA" },
+      { start: "RJY", end: "RJZ", uf: "SC" }, { start: "RLA", end: "RLQ", uf: "SC" },
+      { start: "RNI", end: "RNZ", uf: "RN" }, { start: "RTA", end: "RUZ", uf: "MG" },
+      { start: "IVA", end: "IWZ", uf: "RS" }, { start: "IXA", end: "IZZ", uf: "RS" },
+      { start: "JAA", end: "JKJ", uf: "RS" }, { start: "LWA", end: "LXZ", uf: "RO" },
+      { start: "NAH", end: "NEH", uf: "RR" }, { start: "LYA", end: "MMV", uf: "SC" },
+      { start: "NQA", end: "NQZ", uf: "SE" }, { start: "JSX", end: "JXV", uf: "ES" },
+      { start: "HPD", end: "HQE", uf: "GO" }, { start: "HQF", end: "HTX", uf: "GO" }
+    ];
+
+    const CHECKLIST_ITEMS = [
+      { id: 'crlv', title: 'Documento do veículo (CRLV)', description: 'Verifique se o CRV/CRLV está em nome do vendedor e sem rasuras' },
+      { id: 'debitos', title: 'Verificar débitos (IPVA/Multas)', description: 'Consulte se há IPVA atrasado, multas pendentes ou licenciamento em aberto' },
+      { id: 'restricoes', title: 'Consultar restrições', description: 'Verifique se o veículo possui alienação fiduciária, roubo/furto ou recall pendente' },
+      { id: 'cnh', title: 'CNH do comprador e vendedor', description: 'Ambas devem estar válidas e com foto recente' },
+      { id: 'cartorio', title: 'Reconhecer firma no cartório', description: 'Assinaturas do CRV devem ser reconhecidas em cartório' },
+      { id: 'transferencia', title: 'Transferência no DETRAN', description: 'Realize a transferência em até 30 dias para evitar multas' }
+    ];
+
+    // ============= UTILITIES =============
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => document.querySelectorAll(sel);
+
+    function formatCurrency(value) {
+      return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    function parseCurrency(value) {
+      return parseFloat(value.replace(/[^\d]/g, '')) / 100 || 0;
+    }
+
+    function formatCurrencyInput(value) {
+      const numbers = value.replace(/\D/g, '');
+      if (!numbers) return '';
+      const amount = parseInt(numbers, 10) / 100;
+      return amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    function showToast(message, type = 'success') {
+      const existing = $('.toast');
+      if (existing) existing.remove();
+
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.innerHTML = `<span>${type === 'success' ? '✓' : '✕'}</span> ${message}`;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    function saveToStorage(key, data) {
+      localStorage.setItem(key, JSON.stringify(data));
+    }
+
+    // ============= THEME =============
+    function initTheme() {
+      if (state.isDark) {
+        document.documentElement.classList.add('dark');
+        $('#theme-btn').textContent = '☀️';
+      }
+    }
+
+    function toggleTheme() {
+      state.isDark = !state.isDark;
+      document.documentElement.classList.toggle('dark', state.isDark);
+      $('#theme-btn').textContent = state.isDark ? '☀️' : '🌙';
+      localStorage.setItem('theme', state.isDark ? 'dark' : 'light');
+    }
+
+    // ============= ONLINE STATUS =============
+    function updateOnlineStatus() {
+      const isOnline = navigator.onLine;
+      const badge = $('#status-badge');
+      const text = $('#status-text');
+      
+      if (isOnline) {
+        badge.classList.remove('status-offline');
+        badge.classList.add('status-online');
+        text.textContent = 'Online';
+      } else {
+        badge.classList.remove('status-online');
+        badge.classList.add('status-offline');
+        text.textContent = 'Offline';
+      }
+    }
+
+    // ============= NAVIGATION =============
+    function switchTab(tab) {
+      $$('.nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
+      $('#evaluator-tab').classList.toggle('hidden', tab !== 'evaluator');
+      $('#detran-tab').classList.toggle('hidden', tab !== 'detran');
+    }
+
+    // ============= FIPE API =============
+    async function fetchBrands() {
+      const select = $('#brand-select');
+      select.disabled = true;
+      select.innerHTML = '<option value="">Carregando...</option>';
+      
+      try {
+        const res = await fetch(`${API_BASE}/${state.vehicleType}/marcas`);
+        state.brands = await res.json();
+        
+        select.innerHTML = '<option value="">Selecione a marca</option>' + 
+          state.brands.map(b => `<option value="${b.codigo}">${b.nome}</option>`).join('');
+        select.disabled = false;
+      } catch (e) {
+        select.innerHTML = '<option value="">Erro ao carregar</option>';
+        showToast('Erro ao carregar marcas', 'error');
+      }
+    }
+
+    async function fetchModels(brandCode) {
+      const select = $('#model-select');
+      select.disabled = true;
+      select.innerHTML = '<option value="">Carregando...</option>';
+      
+      try {
+        const res = await fetch(`${API_BASE}/${state.vehicleType}/marcas/${brandCode}/modelos`);
+        const data = await res.json();
+        state.models = data.modelos || [];
+        
+        select.innerHTML = '<option value="">Selecione o modelo</option>' + 
+          state.models.map(m => `<option value="${m.codigo}">${m.nome}</option>`).join('');
+        select.disabled = false;
+      } catch (e) {
+        select.innerHTML = '<option value="">Erro ao carregar</option>';
+        showToast('Erro ao carregar modelos', 'error');
+      }
+    }
+
+    async function fetchYears(brandCode, modelCode) {
+      const select = $('#year-select');
+      select.disabled = true;
+      select.innerHTML = '<option value="">Carregando...</option>';
+      
+      try {
+        const res = await fetch(`${API_BASE}/${state.vehicleType}/marcas/${brandCode}/modelos/${modelCode}/anos`);
+        state.years = await res.json();
+        
+        select.innerHTML = '<option value="">Selecione o ano</option>' + 
+          state.years.map(y => `<option value="${y.codigo}">${y.nome}</option>`).join('');
+        select.disabled = false;
+      } catch (e) {
+        select.innerHTML = '<option value="">Erro ao carregar</option>';
+        showToast('Erro ao carregar anos', 'error');
+      }
+    }
+
+    async function fetchResult(brandCode, modelCode, yearCode) {
+      $('#loading').classList.remove('hidden');
+      
+      try {
+        const res = await fetch(`${API_BASE}/${state.vehicleType}/marcas/${brandCode}/modelos/${modelCode}/anos/${yearCode}`);
+        state.result = await res.json();
+        
+        renderResult();
+        saveToFipeHistory();
+        updateFinancing();
+      } catch (e) {
+        showToast('Erro ao buscar valor FIPE', 'error');
+      } finally {
+        $('#loading').classList.add('hidden');
+      }
+    }
+
+    // ============= RENDER RESULT =============
+    function renderResult() {
+      if (!state.result) return;
+      
+      const r = state.result;
+      const container = $('#result-container');
+      
+      container.innerHTML = `
+        <div class="result-card">
+          <div class="result-header">
+            <div>
+              <span class="result-badge">Valor FIPE</span>
+              <h2 class="result-value">${r.Valor}</h2>
+            </div>
+            <span class="result-icon">🚗</span>
+          </div>
+          <div class="result-details">
+            <div class="result-row"><span>Modelo</span><span>${r.Modelo}</span></div>
+            <div class="result-row"><span>Ano</span><span>${r.AnoModelo}</span></div>
+            <div class="result-row"><span>Combustível</span><span>${r.Combustivel}</span></div>
+            <div class="result-row" style="font-size:0.75rem;opacity:0.8"><span>Código FIPE</span><span style="font-family:monospace">${r.CodigoFipe}</span></div>
+            <div class="result-row" style="font-size:0.75rem;opacity:0.8"><span>Referência</span><span>${r.MesReferencia}</span></div>
+          </div>
+          <div class="result-actions">
+            <button class="action-btn" id="copy-btn">📋 Copiar</button>
+            <button class="action-btn" id="share-btn">📤 Compartilhar</button>
+            <button class="action-btn" id="add-compare-btn" ${isInCompareList() || state.compareList.length >= 3 ? 'disabled' : ''}>
+              ⚖️ ${isInCompareList() ? 'Adicionado' : 'Comparar'}
+            </button>
+          </div>
+        </div>
+      `;
+      
+      container.classList.remove('hidden');
+      $('#empty-state').classList.add('hidden');
+      $('#fipe-history-section').classList.add('hidden');
+      
+      // Show additional sections
+      $('#chart-section').classList.remove('hidden');
+      $('#comparison-section').classList.remove('hidden');
+      $('#financing-section').classList.remove('hidden');
+      
+      // Setup chart
+      setupPriceChart();
+      
+      // Event listeners
+      $('#copy-btn').onclick = copyValue;
+      $('#share-btn').onclick = shareValue;
+      $('#add-compare-btn').onclick = addToCompare;
+    }
+
+    function copyValue() {
+      navigator.clipboard.writeText(state.result.Valor);
+      showToast('Valor copiado!');
+    }
+
+    function shareValue() {
+      const r = state.result;
+      const text = `${r.Marca} ${r.Modelo} (${r.AnoModelo})\nValor FIPE: ${r.Valor}\nCódigo: ${r.CodigoFipe}\nRef: ${r.MesReferencia}`;
+      
+      if (navigator.share) {
+        navigator.share({ title: 'Valor FIPE', text });
+      } else {
+        navigator.clipboard.writeText(text);
+        showToast('Informações copiadas!');
+      }
+    }
+
+    // ============= FIPE HISTORY =============
+    function saveToFipeHistory() {
+      const brand = state.brands.find(b => b.codigo === state.selectedBrand);
+      const model = state.models.find(m => String(m.codigo) === state.selectedModel);
+      const year = state.years.find(y => y.codigo === state.selectedYear);
+      
+      const item = {
+        brand: brand?.nome || '',
+        model: model?.nome || '',
+        year: year?.nome || '',
+        value: state.result.Valor,
+        codigoFipe: state.result.CodigoFipe,
+        timestamp: Date.now()
+      };
+      
+      state.fipeHistory = [item, ...state.fipeHistory.filter(h => 
+        !(h.codigoFipe === item.codigoFipe && h.year === item.year)
+      )].slice(0, 10);
+      
+      saveToStorage('fipe_history', state.fipeHistory);
+    }
+
+    function renderFipeHistory() {
+      const container = $('#fipe-history-list');
+      const section = $('#fipe-history-section');
+      
+      if (state.fipeHistory.length === 0 || state.result) {
+        section.classList.add('hidden');
+        return;
+      }
+      
+      section.classList.remove('hidden');
+      $('#empty-state').classList.add('hidden');
+      
+      container.innerHTML = state.fipeHistory.slice(0, 5).map((item, idx) => `
+        <button class="history-item" data-index="${idx}">
+          <div class="history-badge">${item.brand.split(' ').map(w => w[0]).join('').slice(0,3)}</div>
+          <div class="history-info">
+            <div class="history-model">
+              <span>${item.model}</span>
+              <span class="year">${item.year}</span>
+            </div>
+            <div class="history-value">${item.value}</div>
+          </div>
+          <span>→</span>
+        </button>
+      `).join('');
+      
+      container.querySelectorAll('.history-item').forEach(btn => {
+        btn.onclick = () => {
+          const item = state.fipeHistory[btn.dataset.index];
+          const brand = state.brands.find(b => b.nome === item.brand);
+          if (brand) {
+            $('#brand-select').value = brand.codigo;
+            handleBrandChange(brand.codigo);
+            showToast(`Carregando ${item.brand} ${item.model}...`);
+          }
+        };
+      });
+    }
+
+    // ============= COMPARE =============
+    function isInCompareList() {
+      if (!state.result) return false;
+      return state.compareList.some(c => c.codigoFipe === state.result.CodigoFipe);
+    }
+
+    function addToCompare() {
+      if (!state.result || isInCompareList() || state.compareList.length >= 3) return;
+      
+      const brand = state.brands.find(b => b.codigo === state.selectedBrand);
+      const model = state.models.find(m => String(m.codigo) === state.selectedModel);
+      const year = state.years.find(y => y.codigo === state.selectedYear);
+      
+      const item = {
+        brand: brand?.nome || '',
+        model: model?.nome || '',
+        year: year?.nome || '',
+        value: state.result.Valor,
+        codigoFipe: state.result.CodigoFipe,
+        timestamp: Date.now()
+      };
+      
+      state.compareList.push(item);
+      saveToStorage('compare_list', state.compareList);
+      renderCompareBar();
+      showToast('Adicionado para comparação!');
+      
+      // Update button
+      const btn = $('#add-compare-btn');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⚖️ Adicionado';
+      }
+    }
+
+    function renderCompareBar() {
+      const bar = $('#compare-bar');
+      const items = $('#compare-items');
+      const count = $('#compare-count');
+      const btn = $('#compare-btn');
+      
+      if (state.compareList.length === 0) {
+        bar.classList.add('hidden');
+        return;
+      }
+      
+      bar.classList.remove('hidden');
+      count.textContent = state.compareList.length;
+      btn.disabled = state.compareList.length < 2;
+      
+      items.innerHTML = state.compareList.map((item, idx) => `
+        <div class="compare-item">
+          <button class="compare-item-remove" data-index="${idx}">✕</button>
+          <div class="compare-item-model">${item.model.split(' ').slice(0,2).join(' ')}</div>
+          <div class="compare-item-year">${item.year}</div>
+          <div class="compare-item-value">${item.value}</div>
+        </div>
+      `).join('') + Array.from({ length: 3 - state.compareList.length }, () => 
+        '<div class="compare-empty">+</div>'
+      ).join('');
+      
+      items.querySelectorAll('.compare-item-remove').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          state.compareList.splice(parseInt(btn.dataset.index), 1);
+          saveToStorage('compare_list', state.compareList);
+          renderCompareBar();
+        };
+      });
+    }
+
+    function showCompareModal() {
+      if (state.compareList.length < 2) return;
+      
+      const values = state.compareList.map(item => parseCurrency(item.value));
+      const minValue = Math.min(...values);
+      const winnerIndex = values.indexOf(minValue);
+      
+      const gridCols = `1fr `.repeat(state.compareList.length + 1).trim();
+      
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.id = 'compare-modal';
+      modal.innerHTML = `
+        <div class="modal-header">
+          <button class="modal-close" onclick="closeModal('compare-modal')">✕</button>
+          <span class="modal-title">⚖️ Comparativo de Veículos</span>
+          <div style="width:2.5rem"></div>
+        </div>
+        <div class="modal-content">
+          <div class="compare-modal-items">
+            ${state.compareList.map((item, idx) => `
+              <div class="compare-modal-item ${idx === winnerIndex ? 'winner' : ''}">
+                <div class="compare-modal-badge">${item.brand.split(' ').map(w => w[0]).join('').slice(0,3)}</div>
+                <div class="compare-modal-model">${item.model.split(' ').slice(0,2).join(' ')}</div>
+                <div class="compare-modal-year">${item.year}</div>
+                <div class="compare-modal-value">${item.value}</div>
+                ${idx === winnerIndex ? '<span class="compare-modal-winner-badge">💰 Menor Valor</span>' : ''}
+              </div>
+            `).join('')}
+          </div>
+          
+          <div class="compare-table">
+            <div class="compare-table-header" style="grid-template-columns: ${gridCols}">
+              <span></span>
+              ${state.compareList.map((item, idx) => `<span>${idx === winnerIndex ? '⭐ ' : ''}V${idx + 1}</span>`).join('')}
+            </div>
+            <div class="compare-table-row" style="grid-template-columns: ${gridCols}">
+              <span>Marca</span>
+              ${state.compareList.map(item => `<span>${item.brand}</span>`).join('')}
+            </div>
+            <div class="compare-table-row highlight" style="grid-template-columns: ${gridCols}">
+              <span>Valor FIPE</span>
+              ${state.compareList.map(item => `<span>${item.value}</span>`).join('')}
+            </div>
+            ${state.compareList.length > 1 ? `
+              <div class="compare-table-row" style="grid-template-columns: ${gridCols}">
+                <span>Diferença</span>
+                ${state.compareList.map((item, idx) => {
+                  const diff = values[idx] - minValue;
+                  return `<span style="color: ${diff === 0 ? 'hsl(var(--accent))' : 'hsl(var(--destructive))'}">${diff === 0 ? '—' : '+' + formatCurrency(diff)}</span>`;
+                }).join('')}
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+      
+      $('#modals').appendChild(modal);
+    }
+
+    function closeModal(id) {
+      const modal = $(`#${id}`);
+      if (modal) modal.remove();
+    }
+
+    // ============= PRICE CHART =============
+    function setupPriceChart() {
+      if (!state.result) return;
+      
+      const currentValue = parseCurrency(state.result.Valor);
+      const data = generatePriceHistory(currentValue);
+      
+      // Calculate trend
+      const firstValue = data[0].value;
+      const lastValue = data[data.length - 1].value;
+      const change = ((lastValue - firstValue) / firstValue) * 100;
+      
+      let trendClass = 'trend-stable';
+      let trendText = `${Math.abs(change).toFixed(1)}% nos últimos 12 meses`;
+      let trendIcon = '—';
+      
+      if (change > 1) {
+        trendClass = 'trend-up';
+        trendIcon = '📈';
+        trendText = `+${change.toFixed(1)}% nos últimos 12 meses`;
+      } else if (change < -1) {
+        trendClass = 'trend-down';
+        trendIcon = '📉';
+        trendText = `-${Math.abs(change).toFixed(1)}% nos últimos 12 meses`;
+      }
+      
+      $('#trend-badge').innerHTML = `<span class="${trendClass}">${trendIcon} ${trendText}</span>`;
+      
+      // Create chart
+      const ctx = $('#price-chart').getContext('2d');
+      
+      if (state.priceChart) {
+        state.priceChart.destroy();
+      }
+      
+      const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
+      const chartColor = `hsl(${primaryColor})`;
+      
+      state.priceChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.map(d => d.month),
+          datasets: [{
+            label: 'Valor FIPE',
+            data: data.map(d => d.value),
+            borderColor: chartColor,
+            backgroundColor: chartColor.replace(')', ', 0.1)').replace('hsl', 'hsla'),
+            fill: true,
+            tension: 0.4,
+            pointRadius: 0,
+            pointHoverRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => formatCurrency(ctx.raw)
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { font: { size: 10 }, maxRotation: 0 }
+            },
+            y: {
+              grid: { color: 'rgba(128,128,128,0.1)' },
+              ticks: {
+                font: { size: 10 },
+                callback: (v) => `${(v / 1000).toFixed(0)}k`
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function generatePriceHistory(currentValue) {
+      const data = [];
+      const now = new Date();
+      
+      let price = currentValue;
+      
+      for (let i = 11; i >= 0; i--) {
+        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthName = date.toLocaleDateString('pt-BR', { month: 'short' });
+        const year = date.getFullYear().toString().slice(-2);
+        
+        if (i === 0) {
+          price = currentValue;
+        } else {
+          const variation = 1 + (Math.random() * 0.025 - 0.005);
+          price = price * variation;
+        }
+        
+        data.push({
+          month: `${monthName}/${year}`,
+          value: Math.round(price)
+        });
+      }
+      
+      return data.sort((a, b) => {
+        const [mA, yA] = a.month.split('/');
+        const [mB, yB] = b.month.split('/');
+        return parseInt(yA) - parseInt(yB) || data.indexOf(a) - data.indexOf(b);
+      });
+    }
+
+    // ============= PRICE COMPARISON =============
+    function handlePriceComparison() {
+      const input = $('#announced-price');
+      const result = $('#comparison-result');
+      
+      const formatted = formatCurrencyInput(input.value);
+      input.value = formatted;
+      
+      if (!state.result || !formatted) {
+        result.innerHTML = '';
+        return;
+      }
+      
+      const fipeValue = parseCurrency(state.result.Valor);
+      const announcedValue = parseCurrency(formatted);
+      
+      if (announcedValue === 0) {
+        result.innerHTML = '';
+        return;
+      }
+      
+      const difference = ((announcedValue - fipeValue) / fipeValue) * 100;
+      const absoluteDiff = announcedValue - fipeValue;
+      
+      let type, label, desc, icon;
+      
+      if (difference <= -10) {
+        type = 'muito_abaixo';
+        label = 'Muito Abaixo da FIPE';
+        desc = 'Ótimo negócio! Preço bem abaixo do mercado.';
+        icon = '📉';
+      } else if (difference <= 5) {
+        type = 'justo';
+        label = 'Preço Justo';
+        desc = 'Valor compatível com a tabela FIPE.';
+        icon = '✓';
+      } else if (difference <= 15) {
+        type = 'acima';
+        label = 'Acima da FIPE';
+        desc = 'Preço um pouco elevado. Tente negociar.';
+        icon = '📈';
+      } else {
+        type = 'muito_acima';
+        label = 'Muito Acima da FIPE';
+        desc = 'Preço muito elevado. Evite ou negocie bastante.';
+        icon = '⚠️';
+      }
+      
+      result.innerHTML = `
+        <div class="comparison-result ${type}">
+          <div class="comparison-header">${icon} ${label}</div>
+          <div class="comparison-desc">${desc}</div>
+          <div class="comparison-details">
+            <div class="comparison-row">
+              <span>Diferença</span>
+              <span>${absoluteDiff >= 0 ? '+' : ''}${formatCurrency(absoluteDiff)}</span>
+            </div>
+            <div class="comparison-row">
+              <span>Percentual</span>
+              <span>${difference >= 0 ? '+' : ''}${difference.toFixed(1)}%</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ============= FINANCING =============
+    function updateFinancing() {
+      if (!state.result) return;
+      
+      const vehiclePrice = parseCurrency(state.result.Valor);
+      const downPayment = (vehiclePrice * state.downPayment) / 100;
+      const financedAmount = vehiclePrice - downPayment;
+      
+      $('#down-payment-percent').textContent = `${state.downPayment}%`;
+      $('#down-payment-value').textContent = formatCurrency(downPayment);
+      
+      if (financedAmount <= 0) {
+        $('#monthly-payment').textContent = `${state.installments}x de R$ 0,00`;
+        $('#financed-amount').textContent = 'R$ 0,00';
+        $('#total-amount').textContent = formatCurrency(downPayment);
+        $('#total-interest').textContent = '+ R$ 0,00';
+        return;
+      }
+      
+      // Tabela Price
+      const i = 0.0199; // 1.99% ao mês
+      const n = state.installments;
+      const factor = (i * Math.pow(1 + i, n)) / (Math.pow(1 + i, n) - 1);
+      const monthlyPayment = financedAmount * factor;
+      const totalAmount = downPayment + (monthlyPayment * n);
+      const totalInterest = totalAmount - vehiclePrice;
+      
+      $('#monthly-payment').textContent = `${n}x de ${formatCurrency(monthlyPayment)}`;
+      $('#financed-amount').textContent = formatCurrency(financedAmount);
+      $('#total-amount').textContent = formatCurrency(totalAmount);
+      $('#total-interest').textContent = `+ ${formatCurrency(totalInterest)}`;
+    }
+
+    // ============= PLATE DETECTION =============
+    function detectUfFromPlate(plate) {
+      if (plate.length < 3) return '';
+      
+      const prefix = plate.substring(0, 3).toUpperCase();
+      const match = PLATE_RANGES.find(r => prefix >= r.start && prefix <= r.end);
+      return match?.uf || '';
+    }
+
+    function handlePlateInput() {
+      const input = $('#plate-input');
+      const value = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7);
+      input.value = value;
+      state.plate = value;
+      
+      const detected = detectUfFromPlate(value);
+      state.detectedUf = detected;
+      
+      const ufBadge = $('#uf-detected');
+      if (detected) {
+        ufBadge.classList.remove('hidden');
+        $('#detected-uf-text').textContent = `${detected} detectado`;
+        $('#uf-select').value = detected;
+      } else {
+        ufBadge.classList.add('hidden');
+      }
+      
+      input.classList.toggle('valid', value.length === 7);
+      updateDetranButton();
+    }
+
+    function updateDetranButton() {
+      const btn = $('#detran-btn');
+      const uf = $('#uf-select').value || state.detectedUf;
+      btn.disabled = state.plate.length !== 7 || !uf;
+    }
+
+    function openDetranPortal() {
+      const uf = $('#uf-select').value || state.detectedUf;
+      if (!uf || state.plate.length !== 7) return;
+      
+      // Save to history
+      state.detranHistory = [
+        { plate: state.plate, uf, timestamp: Date.now() },
+        ...state.detranHistory.filter(h => h.plate !== state.plate)
+      ].slice(0, 5);
+      saveToStorage('detran_history', state.detranHistory);
+      renderDetranHistory();
+      
+      // Show modal
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.id = 'detran-modal';
+      modal.innerHTML = `
+        <div class="modal-header">
+          <button class="modal-close" onclick="closeModal('detran-modal')">✕</button>
+          <span class="modal-title">🛡️ Ligação Segura Detran</span>
+          <div style="width:2.5rem"></div>
+        </div>
+        <div class="modal-content">
+          <div class="detran-modal-content">
+            <div class="detran-icon">🌐</div>
+            <h2 class="detran-title">Detran ${uf}</h2>
+            <p class="detran-desc">Abrindo o portal oficial para a placa <strong style="color:hsl(var(--primary))">${state.plate}</strong>.</p>
+            <a href="${DETRAN_URLS[uf]}" target="_blank" rel="noopener noreferrer" class="detran-link">Entrar no Portal</a>
+            <button class="detran-cancel" onclick="closeModal('detran-modal')">Cancelar</button>
+          </div>
+        </div>
+      `;
+      
+      $('#modals').appendChild(modal);
+    }
+
+    function renderDetranHistory() {
+      const container = $('#detran-history-list');
+      const section = $('#detran-history-section');
+      
+      if (state.detranHistory.length === 0) {
+        section.classList.add('hidden');
+        return;
+      }
+      
+      section.classList.remove('hidden');
+      
+      container.innerHTML = state.detranHistory.map((item, idx) => `
+        <button class="history-item" data-index="${idx}">
+          <div class="history-badge">${item.uf}</div>
+          <span style="font-family:monospace;font-size:1.25rem;font-weight:700;letter-spacing:0.1em">${item.plate}</span>
+          <span>⚡</span>
+        </button>
+      `).join('');
+      
+      container.querySelectorAll('.history-item').forEach(btn => {
+        btn.onclick = () => {
+          const item = state.detranHistory[btn.dataset.index];
+          $('#plate-input').value = item.plate;
+          state.plate = item.plate;
+          state.detectedUf = item.uf;
+          $('#uf-select').value = item.uf;
+          $('#uf-detected').classList.remove('hidden');
+          $('#detected-uf-text').textContent = `${item.uf} detectado`;
+          $('#plate-input').classList.add('valid');
+          updateDetranButton();
+        };
+      });
+    }
+
+    // ============= CHECKLIST =============
+    function renderChecklist() {
+      const container = $('#checklist-items');
+      const checked = new Set(state.checklist);
+      const progress = (checked.size / CHECKLIST_ITEMS.length) * 100;
+      
+      $('#checklist-progress').style.width = `${progress}%`;
+      $('#checklist-count-text').textContent = `${checked.size}/${CHECKLIST_ITEMS.length}`;
+      $('#checklist-status').textContent = checked.size === CHECKLIST_ITEMS.length 
+        ? '✅ Tudo pronto para a transferência!' 
+        : `${CHECKLIST_ITEMS.length - checked.size} item(s) pendente(s)`;
+      
+      container.innerHTML = CHECKLIST_ITEMS.map(item => `
+        <div class="checklist-item ${checked.has(item.id) ? 'checked' : ''}" data-id="${item.id}">
+          <button class="checklist-row">
+            <div class="checklist-checkbox">${checked.has(item.id) ? '✓' : ''}</div>
+            <span class="checklist-title">${item.title}</span>
+            <span class="checklist-info">ℹ️</span>
+          </button>
+          <div class="checklist-desc hidden">${item.description}</div>
+        </div>
+      `).join('');
+      
+      container.querySelectorAll('.checklist-item').forEach(el => {
+        el.querySelector('.checklist-row').onclick = (e) => {
+          if (e.target.closest('.checklist-info')) {
+            el.querySelector('.checklist-desc').classList.toggle('hidden');
+            return;
+          }
+          
+          const id = el.dataset.id;
+          if (state.checklist.includes(id)) {
+            state.checklist = state.checklist.filter(i => i !== id);
+          } else {
+            state.checklist.push(id);
+          }
+          saveToStorage('document_checklist', state.checklist);
+          renderChecklist();
+        };
+      });
+    }
+
+    // ============= UF SELECT =============
+    function populateUfSelect() {
+      const select = $('#uf-select');
+      const ufs = Object.keys(DETRAN_URLS).sort();
+      
+      select.innerHTML = '<option value="">Selecione o Estado (UF)...</option>' + 
+        ufs.map(uf => `<option value="${uf}">${uf}</option>`).join('');
+    }
+
+    // ============= EVENT HANDLERS =============
+    function handleBrandChange(value) {
+      state.selectedBrand = value;
+      state.selectedModel = '';
+      state.selectedYear = '';
+      state.result = null;
+      
+      $('#model-select').disabled = true;
+      $('#model-select').innerHTML = '<option value="">Selecione o modelo</option>';
+      $('#year-select').disabled = true;
+      $('#year-select').innerHTML = '<option value="">Selecione o ano</option>';
+      $('#result-container').classList.add('hidden');
+      $('#chart-section').classList.add('hidden');
+      $('#comparison-section').classList.add('hidden');
+      $('#financing-section').classList.add('hidden');
+      
+      if (value) {
+        fetchModels(value);
+      }
+      
+      renderFipeHistory();
+    }
+
+    function handleModelChange(value) {
+      state.selectedModel = value;
+      state.selectedYear = '';
+      state.result = null;
+      
+      $('#year-select').disabled = true;
+      $('#year-select').innerHTML = '<option value="">Selecione o ano</option>';
+      $('#result-container').classList.add('hidden');
+      $('#chart-section').classList.add('hidden');
+      $('#comparison-section').classList.add('hidden');
+      $('#financing-section').classList.add('hidden');
+      
+      if (value) {
+        fetchYears(state.selectedBrand, value);
+      }
+    }
+
+    function handleYearChange(value) {
+      state.selectedYear = value;
+      
+      if (value) {
+        fetchResult(state.selectedBrand, state.selectedModel, value);
+      }
+    }
+
+    function handleVehicleTypeChange(type) {
+      state.vehicleType = type;
+      state.selectedBrand = '';
+      state.selectedModel = '';
+      state.selectedYear = '';
+      state.result = null;
+      
+      $$('.vehicle-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.type === type));
+      
+      $('#model-select').disabled = true;
+      $('#model-select').innerHTML = '<option value="">Selecione o modelo</option>';
+      $('#year-select').disabled = true;
+      $('#year-select').innerHTML = '<option value="">Selecione o ano</option>';
+      $('#result-container').classList.add('hidden');
+      $('#chart-section').classList.add('hidden');
+      $('#comparison-section').classList.add('hidden');
+      $('#financing-section').classList.add('hidden');
+      $('#empty-state').classList.remove('hidden');
+      
+      fetchBrands();
+    }
+
+    // ============= INIT =============
+    function init() {
+      initTheme();
+      updateOnlineStatus();
+      populateUfSelect();
+      fetchBrands();
+      renderFipeHistory();
+      renderDetranHistory();
+      renderChecklist();
+      renderCompareBar();
+      
+      // Event listeners
+      $('#theme-btn').onclick = toggleTheme;
+      
+      window.addEventListener('online', updateOnlineStatus);
+      window.addEventListener('offline', updateOnlineStatus);
+      
+      $$('.nav-btn').forEach(btn => {
+        btn.onclick = () => switchTab(btn.dataset.tab);
+      });
+      
+      $$('.vehicle-btn').forEach(btn => {
+        btn.onclick = () => handleVehicleTypeChange(btn.dataset.type);
+      });
+      
+      $('#brand-select').onchange = (e) => handleBrandChange(e.target.value);
+      $('#model-select').onchange = (e) => handleModelChange(e.target.value);
+      $('#year-select').onchange = (e) => handleYearChange(e.target.value);
+      
+      $('#clear-fipe-history').onclick = () => {
+        state.fipeHistory = [];
+        saveToStorage('fipe_history', []);
+        renderFipeHistory();
+        $('#empty-state').classList.remove('hidden');
+      };
+      
+      $('#chart-toggle').onclick = () => {
+        const content = $('#chart-content');
+        const btn = $('#chart-toggle');
+        content.classList.toggle('hidden');
+        btn.textContent = content.classList.contains('hidden') ? '▼' : '▲';
+      };
+      
+      $('#announced-price').oninput = handlePriceComparison;
+      
+      $('#down-payment-slider').oninput = (e) => {
+        state.downPayment = parseInt(e.target.value);
+        updateFinancing();
+      };
+      
+      $$('#installments .installment-btn').forEach(btn => {
+        btn.onclick = () => {
+          state.installments = parseInt(btn.dataset.months);
+          $$('#installments .installment-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          updateFinancing();
+        };
+      });
+      
+      $('#plate-input').oninput = handlePlateInput;
+      $('#uf-select').onchange = updateDetranButton;
+      $('#detran-btn').onclick = openDetranPortal;
+      
+      $('#clear-compare').onclick = () => {
+        state.compareList = [];
+        saveToStorage('compare_list', []);
+        renderCompareBar();
+      };
+      
+      $('#compare-btn').onclick = showCompareModal;
+    }
+
+    // ============= PWA =============
+    function registerPWA() {
+      // Inline manifest
+      const manifest = {
+        name: "Fipe Scanner",
+        short_name: "FipeScanner",
+        description: "Consulte o valor FIPE de veículos e acesse portais DETRAN",
+        start_url: "./",
+        display: "standalone",
+        orientation: "portrait",
+        background_color: "#0A0A0A",
+        theme_color: "#3B82F6",
+        icons: [
+          { src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%233B82F6' rx='20' width='100' height='100'/><text x='50' y='65' font-size='40' text-anchor='middle' fill='white'>FS</text></svg>", sizes: "any", type: "image/svg+xml" }
+        ]
+      };
+      
+      const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+      const manifestUrl = URL.createObjectURL(manifestBlob);
+      
+      const link = document.createElement('link');
+      link.rel = 'manifest';
+      link.href = manifestUrl;
+      document.head.appendChild(link);
+      
+      // Inline service worker
+      if ('serviceWorker' in navigator) {
+        const swCode = `
+          const CACHE_NAME = 'fipe-scanner-v1';
+          
+          self.addEventListener('install', (e) => {
+            e.waitUntil(
+              caches.open(CACHE_NAME).then(cache => 
+                cache.addAll(['/'])
+              )
+            );
+            self.skipWaiting();
+          });
+          
+          self.addEventListener('activate', (e) => {
+            e.waitUntil(
+              caches.keys().then(keys => 
+                Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+              )
+            );
+            self.clients.claim();
+          });
+          
+          self.addEventListener('fetch', (e) => {
+            if (e.request.url.includes('parallelum.com.br')) {
+              e.respondWith(
+                fetch(e.request)
+                  .then(res => {
+                    if (res.ok) {
+                      const clone = res.clone();
+                      caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+                    }
+                    return res;
+                  })
+                  .catch(() => caches.match(e.request))
+              );
+            } else {
+              e.respondWith(
+                caches.match(e.request).then(cached => cached || fetch(e.request))
+              );
+            }
+          });
+        `;
+        
+        const swBlob = new Blob([swCode], { type: 'application/javascript' });
+        const swUrl = URL.createObjectURL(swBlob);
+        
+        navigator.serviceWorker.register(swUrl).catch(() => {});
+      }
+    }
+
+    // Start app
+    document.addEventListener('DOMContentLoaded', () => {
+      registerPWA();
+      init();
+    });
+  </script>
+</body>
+</html>
