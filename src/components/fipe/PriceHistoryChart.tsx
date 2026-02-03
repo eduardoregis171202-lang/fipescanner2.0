@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import React from 'react';
 import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -93,17 +93,17 @@ function generatePriceHistory(currentValue: number, modelName: string, yearModel
 }
 
 export function PriceHistoryChart({ currentValue, modelName, yearModel }: PriceHistoryChartProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = React.useState(false);
   
-  const numericValue = useMemo(() => parseCurrency(currentValue), [currentValue]);
+  const numericValue = React.useMemo(() => parseCurrency(currentValue), [currentValue]);
   
-  const priceData = useMemo(() => 
+  const priceData = React.useMemo(() => 
     generatePriceHistory(numericValue, modelName, yearModel, 12),
     [numericValue, modelName, yearModel]
   );
   
   // Calculate trend
-  const trend = useMemo(() => {
+  const trend = React.useMemo(() => {
     if (priceData.length < 2) return { direction: 'stable', percentage: 0 };
     
     const firstValue = priceData[0].value;
@@ -116,7 +116,7 @@ export function PriceHistoryChart({ currentValue, modelName, yearModel }: PriceH
   }, [priceData]);
   
   // Min and max for chart domain
-  const { minValue, maxValue } = useMemo(() => {
+  const { minValue, maxValue } = React.useMemo(() => {
     const values = priceData.map(d => d.value);
     const min = Math.min(...values);
     const max = Math.max(...values);
