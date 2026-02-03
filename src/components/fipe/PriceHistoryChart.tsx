@@ -36,41 +36,58 @@ function formatCurrency(value: number): string {
   });
 }
 
-// Generate realistic price history (simulated)
-function generatePriceHistory(currentValue: number, months: number = 12) {
+// Simple seeded random number generator for consistent results per vehicle
+function seededRandom(seed: number) {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
+
+// Generate a hash from string for seeding
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash);
+}
+
+// Generate realistic price history (simulated but unique per vehicle)
+function generatePriceHistory(currentValue: number, modelName: string, yearModel: number, months: number = 12) {
   const data = [];
   const now = new Date();
   
-  // Simulate price evolution backwards
-  // Cars typically depreciate 10-15% per year, but FIPE can vary
-  // We'll simulate small monthly variations (-2% to +1%)
-  let price = currentValue;
+  // Create a unique seed based on model and year
+  const baseSeed = hashString(`${modelName}-${yearModel}`);
   
-  for (let i = months - 1; i >= 0; i--) {
-    const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+  // Work backwards from current value
+  const prices: number[] = new Array(months);
+  prices[months - 1] = currentValue; // Last month = current value
+  
+  // Generate prices going backwards in time
+  for (let i = months - 2; i >= 0; i--) {
+    const seed = baseSeed + i * 7919; // Use prime number for better distribution
+    const random = seededRandom(seed);
+    
+    // Variation between -1.5% and +2% per month (slight upward trend going forward = depreciation going back)
+    const variation = 1 + (random * 0.035 - 0.015);
+    prices[i] = prices[i + 1] * variation;
+  }
+  
+  // Build data array
+  for (let i = 0; i < months; i++) {
+    const date = new Date(now.getFullYear(), now.getMonth() - (months - 1 - i), 1);
     const monthName = date.toLocaleDateString('pt-BR', { month: 'short' });
     const year = date.getFullYear();
-    
-    if (i === 0) {
-      // Current month = current value
-      price = currentValue;
-    } else {
-      // Random variation for past months
-      // Slight upward bias for older months (reverse of depreciation)
-      const variation = 1 + (Math.random() * 0.025 - 0.005); // -0.5% to +2.5%
-      price = price * variation;
-    }
     
     data.push({
       month: `${monthName}/${year.toString().slice(-2)}`,
       fullDate: date,
-      value: Math.round(price),
-      formatted: formatCurrency(Math.round(price)),
+      value: Math.round(prices[i]),
+      formatted: formatCurrency(Math.round(prices[i])),
     });
   }
-  
-  // Sort by date ascending
-  data.sort((a, b) => a.fullDate.getTime() - b.fullDate.getTime());
   
   return data;
 }
@@ -81,8 +98,8 @@ export function PriceHistoryChart({ currentValue, modelName, yearModel }: PriceH
   const numericValue = useMemo(() => parseCurrency(currentValue), [currentValue]);
   
   const priceData = useMemo(() => 
-    generatePriceHistory(numericValue, 12),
-    [numericValue]
+    generatePriceHistory(numericValue, modelName, yearModel, 12),
+    [numericValue, modelName, yearModel]
   );
   
   // Calculate trend
