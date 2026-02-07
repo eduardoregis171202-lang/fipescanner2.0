@@ -1,56 +1,72 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE, Brand, Model, Year, FipeResult, VehicleType } from '@/lib/constants';
 import { toast } from '@/hooks/use-toast';
 
 // Constantes de anos válidos
 const MIN_YEAR = 1980;
-const MAX_YEAR = new Date().getFullYear() + 1; // Permite veículos do próximo ano
+const MAX_YEAR = new Date().getFullYear() + 1;
 
-// Filtra anos inválidos (ex: 32000) - mantém apenas anos entre 1980 e ano atual + 1
+// Filtra anos inválidos (ex: 32000)
 function filterValidYears(years: Year[]): Year[] {
   return years.filter(year => {
-    // Extrai o número do ano do código (ex: "2024-1" -> 2024)
     const yearMatch = year.codigo.match(/^(\d+)/);
     if (!yearMatch) return false;
-    
     const yearNumber = parseInt(yearMatch[1], 10);
-    
-    // Verifica se é um ano válido
     return yearNumber >= MIN_YEAR && yearNumber <= MAX_YEAR;
   });
 }
 
-// Gera lista completa de anos para seleção inicial (quando só a marca foi escolhida)
-// A API FIPE retorna dados incompletos a nível de marca, então geramos todos os anos possíveis
-// Mostra apenas o ano, sem variações de combustível - a variação será determinada pelo modelo
+// Gera lista completa de anos
 function generateAllYears(): Year[] {
   const years: Year[] = [];
-  
-  // Gera anos do mais recente ao mais antigo
   for (let year = MAX_YEAR; year >= MIN_YEAR; year--) {
     years.push({ codigo: `${year}`, nome: `${year}` });
   }
-  
   return years;
+}
+
+// Função de delay para throttling
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Fetch com retry e delay
+async function fetchWithRetry(url: string, retries = 3, delayMs = 200): Promise<Response> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return res;
+      if (res.status === 429) {
+        // Rate limited - wait longer
+        await delay(delayMs * (i + 2));
+        continue;
+      }
+      return res;
+    } catch (e) {
+      if (i === retries - 1) throw e;
+      await delay(delayMs * (i + 1));
+    }
+  }
+  throw new Error('Max retries reached');
 }
 
 export function useFipeApi(vehicleType: VehicleType) {
   const [brands, setBrands] = useState<Brand[]>([]);
-  const [allModels, setAllModels] = useState<Model[]>([]); // Todos os modelos da marca
-  const [filteredModels, setFilteredModels] = useState<Model[]>([]); // Modelos filtrados pelo ano
-  const [years, setYears] = useState<Year[]>([]); // Anos gerais da marca
-  const [modelYears, setModelYears] = useState<Year[]>([]); // Anos específicos do modelo
+  const [allModels, setAllModels] = useState<Model[]>([]);
+  const [filteredModels, setFilteredModels] = useState<Model[]>([]);
+  const [years, setYears] = useState<Year[]>([]);
+  const [modelYears, setModelYears] = useState<Year[]>([]);
   const [result, setResult] = useState<FipeResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [filteringModels, setFilteringModels] = useState(false); // Loading para filtragem de modelos
+  const [filteringModels, setFilteringModels] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [selectedBrand, setSelectedBrand] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
   const [selectedYear, setSelectedYear] = useState('');
-  const [preSelectedYear, setPreSelectedYear] = useState(''); // Ano selecionado antes do modelo
+  const [preSelectedYear, setPreSelectedYear] = useState('');
 
-  // Reset quando muda tipo de veículo
+  // Cache de anos por modelo para evitar requisições duplicadas
+  const yearsCache = useRef<Record<string, Year[]>>({});
+
   const resetSelections = useCallback(() => {
     setSelectedBrand('');
     setSelectedModel('');
@@ -62,6 +78,7 @@ export function useFipeApi(vehicleType: VehicleType) {
     setModelYears([]);
     setResult(null);
     setError(null);
+    yearsCache.current = {};
   }, []);
 
   // Fetch marcas
@@ -69,7 +86,7 @@ export function useFipeApi(vehicleType: VehicleType) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/${vehicleType}/marcas`);
+      const res = await fetchWithRetry(`${API_BASE}/${vehicleType}/marcas`);
       if (!res.ok) throw new Error('Erro ao carregar marcas');
       const data = await res.json();
       setBrands(Array.isArray(data) ? data : []);
@@ -82,7 +99,7 @@ export function useFipeApi(vehicleType: VehicleType) {
     }
   }, [vehicleType]);
 
-  // Fetch modelos e anos gerais da marca
+  // Fetch modelos
   const fetchModels = useCallback(async (brandCode: string) => {
     if (!brandCode) {
       setAllModels([]);
@@ -93,14 +110,14 @@ export function useFipeApi(vehicleType: VehicleType) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos`);
+      const res = await fetchWithRetry(`${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos`);
       if (!res.ok) throw new Error('Erro ao carregar modelos');
       const data = await res.json();
       const models = data.modelos || [];
       setAllModels(models);
-      setFilteredModels(models); // Inicialmente mostra todos
-      // Usar lista completa de anos - os dados da API a nível de marca são incompletos
+      setFilteredModels(models);
       setYears(generateAllYears());
+      yearsCache.current = {}; // Limpar cache ao trocar marca
     } catch (e) {
       const msg = 'Erro ao carregar modelos. Tente novamente.';
       setError(msg);
@@ -110,7 +127,34 @@ export function useFipeApi(vehicleType: VehicleType) {
     }
   }, [vehicleType]);
 
-  // Filtra modelos que estão disponíveis para o ano selecionado
+  // Busca anos de um modelo específico (com cache)
+  const fetchModelYearsData = useCallback(async (brandCode: string, modelCode: string): Promise<Year[]> => {
+    const cacheKey = `${brandCode}-${modelCode}`;
+    
+    // Verificar cache
+    if (yearsCache.current[cacheKey]) {
+      return yearsCache.current[cacheKey];
+    }
+
+    try {
+      const res = await fetchWithRetry(
+        `${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos/${modelCode}/anos`,
+        3,
+        300
+      );
+      if (!res.ok) return [];
+      const data = await res.json();
+      const validYears = filterValidYears(Array.isArray(data) ? data : []);
+      
+      // Salvar no cache
+      yearsCache.current[cacheKey] = validYears;
+      return validYears;
+    } catch {
+      return [];
+    }
+  }, [vehicleType]);
+
+  // Filtra modelos por ano com throttling e tolerância a falhas
   const filterModelsByYear = useCallback(async (brandCode: string, yearCode: string, models: Model[]) => {
     if (!brandCode || !yearCode || models.length === 0) {
       setFilteredModels(models);
@@ -119,46 +163,63 @@ export function useFipeApi(vehicleType: VehicleType) {
 
     setFilteringModels(true);
     const availableModels: Model[] = [];
+    const failedModels: Model[] = []; // Modelos que falharam - incluir no final
 
-    // Verifica cada modelo em paralelo (com limite de concorrência)
-    const checkModelYear = async (model: Model): Promise<boolean> => {
-      try {
-        const res = await fetch(`${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos/${model.codigo}/anos`);
-        if (!res.ok) return false;
-        const years: Year[] = await res.json();
-        
-        // Verifica se algum ano começa com o código do ano selecionado
-        // Ex: yearCode "2024" deve corresponder a "2024-1", "2024-2", etc.
-        return years.some(y => y.codigo.startsWith(yearCode));
-      } catch {
-        return false;
-      }
-    };
-
-    // Processar em lotes de 5 para não sobrecarregar a API
-    const batchSize = 5;
-    for (let i = 0; i < models.length; i += batchSize) {
-      const batch = models.slice(i, i + batchSize);
-      const results = await Promise.all(batch.map(m => checkModelYear(m)));
+    // Processar sequencialmente com delay para evitar rate limiting
+    for (let i = 0; i < models.length; i++) {
+      const model = models[i];
       
-      batch.forEach((model, index) => {
-        if (results[index]) {
-          availableModels.push(model);
+      try {
+        const modelYearsData = await fetchModelYearsData(brandCode, String(model.codigo));
+        
+        if (modelYearsData.length === 0) {
+          // Falhou em buscar - incluir mesmo assim para não perder modelos
+          failedModels.push(model);
+        } else {
+          // Verificar se tem o ano selecionado
+          const hasYear = modelYearsData.some(y => 
+            y.codigo.startsWith(yearCode + '-') || 
+            y.codigo.startsWith(yearCode)
+          );
+          
+          if (hasYear) {
+            availableModels.push(model);
+          }
         }
-      });
+      } catch {
+        // Em caso de erro, incluir o modelo para não perder
+        failedModels.push(model);
+      }
+
+      // Pequeno delay entre requisições (50ms) para evitar rate limiting
+      if (i < models.length - 1) {
+        await delay(50);
+      }
+
+      // Atualizar a lista progressivamente a cada 10 modelos
+      if ((i + 1) % 10 === 0 || i === models.length - 1) {
+        setFilteredModels([...availableModels, ...failedModels]);
+      }
     }
 
-    setFilteredModels(availableModels);
+    // Se não encontrou nenhum modelo disponível confirmado, mas tem falhas, incluir as falhas
+    const finalModels = availableModels.length > 0 
+      ? [...availableModels, ...failedModels]
+      : failedModels.length > 0 
+        ? failedModels 
+        : [];
+
+    setFilteredModels(finalModels);
     setFilteringModels(false);
 
-    if (availableModels.length === 0 && models.length > 0) {
+    if (finalModels.length === 0 && models.length > 0) {
       toast({ 
         title: 'Atenção', 
-        description: `Nenhum modelo disponível para o ano ${yearCode}`,
+        description: `Nenhum modelo encontrado para ${yearCode}. Tente outro ano.`,
         variant: 'destructive'
       });
     }
-  }, [vehicleType]);
+  }, [fetchModelYearsData]);
 
   // Fetch anos específicos do modelo selecionado
   const fetchModelYears = useCallback(async (brandCode: string, modelCode: string) => {
@@ -169,11 +230,11 @@ export function useFipeApi(vehicleType: VehicleType) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos/${modelCode}/anos`);
-      if (!res.ok) throw new Error('Erro ao carregar anos');
-      const data = await res.json();
-      const rawYears = Array.isArray(data) ? data : [];
-      setModelYears(filterValidYears(rawYears));
+      const years = await fetchModelYearsData(brandCode, modelCode);
+      if (years.length === 0) {
+        throw new Error('Erro ao carregar anos');
+      }
+      setModelYears(years);
     } catch (e) {
       const msg = 'Erro ao carregar anos. Tente novamente.';
       setError(msg);
@@ -181,7 +242,7 @@ export function useFipeApi(vehicleType: VehicleType) {
     } finally {
       setLoading(false);
     }
-  }, [vehicleType]);
+  }, [fetchModelYearsData]);
 
   // Fetch resultado FIPE
   const fetchResult = useCallback(async (brandCode: string, modelCode: string, yearCode: string) => {
@@ -192,7 +253,11 @@ export function useFipeApi(vehicleType: VehicleType) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos/${modelCode}/anos/${yearCode}`);
+      const res = await fetchWithRetry(
+        `${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos/${modelCode}/anos/${yearCode}`,
+        3,
+        300
+      );
       if (!res.ok) throw new Error('Erro ao buscar valor FIPE');
       const data = await res.json();
       setResult(data);
@@ -205,37 +270,36 @@ export function useFipeApi(vehicleType: VehicleType) {
     }
   }, [vehicleType]);
 
-  // Carregar marcas ao iniciar ou mudar tipo
+  // Carregar marcas ao iniciar
   useEffect(() => {
     resetSelections();
     fetchBrands();
   }, [vehicleType, fetchBrands, resetSelections]);
 
-  // Carregar modelos e anos gerais quando selecionar marca
+  // Carregar modelos quando selecionar marca
   useEffect(() => {
     if (selectedBrand) {
       setSelectedModel('');
       setSelectedYear('');
+      setPreSelectedYear('');
       setModelYears([]);
       setResult(null);
       fetchModels(selectedBrand);
     }
   }, [selectedBrand, fetchModels]);
 
-  // Salvar ano pré-selecionado e filtrar modelos quando o ano for selecionado (antes do modelo)
+  // Filtrar modelos quando ano for selecionado (antes do modelo)
   useEffect(() => {
     if (selectedBrand && selectedYear && !selectedModel && allModels.length > 0) {
-      // Salvar o ano que o usuário selecionou antes de escolher modelo
       setPreSelectedYear(selectedYear);
       filterModelsByYear(selectedBrand, selectedYear, allModels);
     } else if (!selectedYear && !selectedModel && allModels.length > 0) {
-      // Se o ano for limpo (e não tem modelo), mostrar todos os modelos
       setPreSelectedYear('');
       setFilteredModels(allModels);
     }
   }, [selectedYear, selectedBrand, selectedModel, allModels, filterModelsByYear]);
 
-  // Carregar anos específicos quando selecionar modelo
+  // Carregar anos quando selecionar modelo
   useEffect(() => {
     if (selectedModel) {
       setResult(null);
@@ -243,13 +307,12 @@ export function useFipeApi(vehicleType: VehicleType) {
     }
   }, [selectedModel, selectedBrand, fetchModelYears]);
 
-  // Ajustar ano quando anos específicos do modelo carregam
+  // Ajustar ano quando modelYears carregam
   useEffect(() => {
     if (!selectedModel || modelYears.length === 0) {
       return;
     }
 
-    // Se tinha um ano pré-selecionado, encontrar o código exato
     if (preSelectedYear) {
       const matchingYear = modelYears.find(y => 
         y.codigo.startsWith(preSelectedYear + '-') || 
@@ -257,26 +320,22 @@ export function useFipeApi(vehicleType: VehicleType) {
       );
       
       if (matchingYear) {
-        // Atualizar para o código completo da API (ex: "2024-1")
         setSelectedYear(matchingYear.codigo);
       } else {
-        // Isso não deveria acontecer se a filtragem funcionou
         setSelectedYear('');
         toast({ 
           title: 'Atenção', 
-          description: 'O ano selecionado não está disponível para este modelo. Selecione outro ano.',
+          description: 'O ano selecionado não está disponível para este modelo.',
           variant: 'destructive'
         });
       }
-      setPreSelectedYear(''); // Limpar após processar
+      setPreSelectedYear('');
     }
-    // Se não tinha ano pré-selecionado, não fazer nada - usuário vai selecionar
   }, [modelYears, selectedModel, preSelectedYear]);
 
-  // Buscar resultado APENAS quando modelo e ano válido estão selecionados
+  // Buscar resultado quando tudo estiver selecionado
   useEffect(() => {
     if (selectedModel && selectedYear && modelYears.length > 0) {
-      // Verificar se o ano está no formato correto (ex: "2024-1")
       const isValidYearFormat = selectedYear.includes('-');
       const yearValid = modelYears.some(y => y.codigo === selectedYear);
       
@@ -286,7 +345,6 @@ export function useFipeApi(vehicleType: VehicleType) {
     }
   }, [selectedYear, selectedBrand, selectedModel, modelYears, fetchResult]);
 
-  // Anos disponíveis: se modelo selecionado, usar modelYears; senão, usar years gerais
   const availableYears = selectedModel && modelYears.length > 0 ? modelYears : years;
 
   return {
