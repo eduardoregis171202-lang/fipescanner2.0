@@ -191,30 +191,32 @@ export function PriceHistoryChart({ currentValue, modelName, yearModel }: PriceH
                 margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
               >
                 <defs>
-                  <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                  <linearGradient id="priceHistoryGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.05} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid 
                   strokeDasharray="3 3" 
-                  stroke="hsl(var(--border))" 
+                  className="stroke-border"
                   vertical={false}
                 />
                 <XAxis
                   dataKey="month"
-                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                  tick={{ fontSize: 10 }}
                   tickLine={false}
                   axisLine={false}
                   interval="preserveStartEnd"
+                  className="fill-muted-foreground"
                 />
                 <YAxis
                   domain={[minValue, maxValue]}
-                  tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                  tick={{ fontSize: 10 }}
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
                   width={40}
+                  className="fill-muted-foreground"
                 />
                 <ChartTooltip
                   content={
@@ -227,11 +229,11 @@ export function PriceHistoryChart({ currentValue, modelName, yearModel }: PriceH
                 <Area
                   type="monotone"
                   dataKey="value"
-                  stroke="hsl(var(--primary))"
+                  stroke="#3b82f6"
                   strokeWidth={2}
-                  fill="url(#colorValue)"
+                  fill="url(#priceHistoryGradient)"
                   dot={false}
-                  activeDot={{ r: 4, fill: 'hsl(var(--primary))' }}
+                  activeDot={{ r: 4, fill: '#3b82f6' }}
                 />
               </AreaChart>
             </ChartContainer>
