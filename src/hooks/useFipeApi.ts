@@ -1,22 +1,61 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  API_BASE,
-  Brand,
-  FipeResult,
-  Model,
-  VehicleType,
-  Year,
-} from "@/lib/constants";
-import { toast } from "@/hooks/use-toast";
-import { readCache, writeCache } from "@/lib/fipe/storage";
-import { fetchJsonWithRetry, FetchJsonError } from "@/lib/fipe/http";
-import { FALLBACK_BRANDS } from "@/lib/fipe/fallbackBrands";
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { API_BASE, Brand, Model, Year, FipeResult, VehicleType } from '@/lib/constants';
+import { toast } from '@/hooks/use-toast';
 
 const MIN_YEAR = 1980;
 const MAX_YEAR = new Date().getFullYear() + 1;
 
+// Fallback brands when API is unavailable
+const FALLBACK_BRANDS: Record<VehicleType, Brand[]> = {
+  carros: [
+    { codigo: "59", nome: "VW - VolksWagen" },
+    { codigo: "25", nome: "FIAT" },
+    { codigo: "22", nome: "CHEVROLET" },
+    { codigo: "56", nome: "TOYOTA" },
+    { codigo: "26", nome: "FORD" },
+    { codigo: "29", nome: "HONDA" },
+    { codigo: "32", nome: "HYUNDAI" },
+    { codigo: "43", nome: "RENAULT" },
+    { codigo: "36", nome: "JEEP" },
+    { codigo: "40", nome: "NISSAN" },
+    { codigo: "39", nome: "MITSUBISHI" },
+    { codigo: "6", nome: "AUDI" },
+    { codigo: "7", nome: "BMW" },
+    { codigo: "38", nome: "MERCEDES-BENZ" },
+    { codigo: "41", nome: "PEUGEOT" },
+    { codigo: "21", nome: "CITROEN" },
+    { codigo: "37", nome: "KIA" },
+    { codigo: "48", nome: "SUZUKI" },
+    { codigo: "18", nome: "CHERY" },
+    { codigo: "102", nome: "BYD" },
+    { codigo: "171", nome: "RAM" },
+    { codigo: "51", nome: "TROLLER" }
+  ],
+  motos: [
+    { codigo: "60", nome: "HONDA" },
+    { codigo: "119", nome: "YAMAHA" },
+    { codigo: "109", nome: "SUZUKI" },
+    { codigo: "67", nome: "KAWASAKI" },
+    { codigo: "50", nome: "DAFRA" },
+    { codigo: "101", nome: "SHINERAY" },
+    { codigo: "27", nome: "BMW" },
+    { codigo: "73", nome: "TRIUMPH" },
+    { codigo: "59", nome: "HARLEY-DAVIDSON" },
+    { codigo: "53", nome: "DUCATI" }
+  ],
+  caminhoes: [
+    { codigo: "114", nome: "VOLVO" },
+    { codigo: "103", nome: "SCANIA" },
+    { codigo: "102", nome: "MERCEDES-BENZ" },
+    { codigo: "111", nome: "VW - VOLKSWAGEN" },
+    { codigo: "101", nome: "IVECO" },
+    { codigo: "116", nome: "DAF" },
+    { codigo: "104", nome: "FORD" }
+  ]
+};
+
 function filterValidYears(years: Year[]): Year[] {
-  return years.filter((year) => {
+  return years.filter(year => {
     const yearMatch = year.codigo.match(/^(\d+)/);
     if (!yearMatch) return false;
     const yearNumber = parseInt(yearMatch[1], 10);
@@ -32,371 +71,358 @@ function generateAllYears(): Year[] {
   return years;
 }
 
-function getErrorCode(e: unknown) {
-  if (e instanceof FetchJsonError) return e.code;
-  if (e instanceof Error) return e.message;
-  return "unknown";
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function fetchWithRetry(url: string, retries = 3, delayMs = 300): Promise<Response | null> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return res;
+
+      // Retry em rate limit e falhas temporárias
+      const retryable = res.status === 429 || res.status === 408 || res.status === 502 || res.status === 503 || res.status === 504;
+      if (retryable) {
+        await delay(delayMs * (i + 2));
+        continue;
+      }
+
+      return res;
+    } catch (e) {
+      console.error(`Fetch attempt ${i + 1} failed:`, e);
+      if (i < retries - 1) await delay(delayMs * (i + 1));
+    }
+  }
+  return null;
 }
+
+const canUseLocalStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+const readCache = <T,>(key: string): T | null => {
+  if (!canUseLocalStorage()) return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+};
+const writeCache = (key: string, value: unknown) => {
+  if (!canUseLocalStorage()) return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore quota/private mode
+  }
+};
 
 export function useFipeApi(vehicleType: VehicleType) {
   const [brands, setBrands] = useState<Brand[]>([]);
-  const [models, setModels] = useState<Model[]>([]);
+  const [allModels, setAllModels] = useState<Model[]>([]);
+  const [filteredModels, setFilteredModels] = useState<Model[]>([]);
   const [years, setYears] = useState<Year[]>([]);
   const [modelYears, setModelYears] = useState<Year[]>([]);
   const [result, setResult] = useState<FipeResult | null>(null);
-
+  const [loading, setLoading] = useState(false);
+  const [filteringModels, setFilteringModels] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [loadingCount, setLoadingCount] = useState(0);
 
-  const [selectedBrand, setSelectedBrand] = useState("");
-  const [selectedModel, setSelectedModel] = useState("");
-  const [selectedYear, setSelectedYear] = useState("");
-  const [preSelectedYear, setPreSelectedYear] = useState("");
+  const [selectedBrand, setSelectedBrand] = useState('');
+  const [selectedModel, setSelectedModel] = useState('');
+  const [selectedYear, setSelectedYear] = useState('');
+  const [preSelectedYear, setPreSelectedYear] = useState('');
 
-  const brandsCacheKey = useMemo(() => `fipe_cache:brands:${vehicleType}`, [vehicleType]);
-  const modelsCacheKey = useCallback(
-    (brandCode: string) => `fipe_cache:models:${vehicleType}:${brandCode}`,
-    [vehicleType]
-  );
-  const modelYearsCacheKey = useCallback(
-    (brandCode: string, modelCode: string) =>
-      `fipe_cache:modelYears:${vehicleType}:${brandCode}:${modelCode}`,
-    [vehicleType]
-  );
-  const resultCacheKey = useCallback(
-    (brandCode: string, modelCode: string, yearCode: string) =>
-      `fipe_cache:result:${vehicleType}:${brandCode}:${modelCode}:${yearCode}`,
-    [vehicleType]
-  );
+  const yearsCache = useRef<Record<string, Year[]>>({});
 
-  const startLoading = useCallback(() => setLoadingCount((c) => c + 1), []);
-  const stopLoading = useCallback(
-    () => setLoadingCount((c) => Math.max(0, c - 1)),
-    []
-  );
-
-  const brandsReqId = useRef(0);
-  const modelsReqId = useRef(0);
-  const yearsReqId = useRef(0);
-  const resultReqId = useRef(0);
+  const brandsCacheKey = `fipe_cache:brands:${vehicleType}`;
 
   const resetSelections = useCallback(() => {
-    setSelectedBrand("");
-    setSelectedModel("");
-    setSelectedYear("");
-    setPreSelectedYear("");
-    setModels([]);
+    setSelectedBrand('');
+    setSelectedModel('');
+    setSelectedYear('');
+    setPreSelectedYear('');
+    setAllModels([]);
+    setFilteredModels([]);
     setYears([]);
     setModelYears([]);
     setResult(null);
     setError(null);
+    yearsCache.current = {};
   }, []);
 
   const fetchBrands = useCallback(async () => {
-    const reqId = ++brandsReqId.current;
-    startLoading();
+    setLoading(true);
     setError(null);
 
     try {
       const url = `${API_BASE}/${vehicleType}/marcas`;
-      const list = await fetchJsonWithRetry<Brand[]>(url, {
-        retries: 3,
-        baseDelayMs: 350,
-        timeoutMs: 10_000,
-      });
+      const res = await fetchWithRetry(url);
 
-      if (reqId !== brandsReqId.current) return;
+      if (!res) {
+        throw new Error('no_response');
+      }
+      if (!res.ok) {
+        throw new Error(`http_${res.status}`);
+      }
 
-      const safeList = Array.isArray(list) ? list : [];
-      setBrands(safeList);
-      writeCache(brandsCacheKey, safeList);
+      const data = await res.json();
+      const list = Array.isArray(data) ? (data as Brand[]) : [];
+      setBrands(list);
+      writeCache(brandsCacheKey, list);
     } catch (e) {
-      if (reqId !== brandsReqId.current) return;
-
+      console.error('fetchBrands error:', e);
+      // Fallback 1: cache local
       const cached = readCache<Brand[]>(brandsCacheKey);
       if (cached && cached.length > 0) {
         setBrands(cached);
         toast({
-          title: "Aviso",
-          description: "API indisponível. Mostrando marcas em cache.",
+          title: 'Aviso',
+          description: 'API indisponível. Mostrando marcas em cache.',
         });
-        return;
+      } else {
+        // Fallback 2: lista embutida no código
+        const fallback = FALLBACK_BRANDS[vehicleType];
+        if (fallback && fallback.length > 0) {
+          setBrands(fallback);
+          toast({
+            title: 'Aviso',
+            description: 'API indisponível. Mostrando marcas principais.',
+          });
+        } else {
+          const details = e instanceof Error ? e.message : 'unknown';
+          const msg = `Erro ao carregar marcas (${details}). Tente novamente.`;
+          setError(msg);
+          toast({ title: 'Erro', description: msg, variant: 'destructive' });
+        }
       }
-
-      const fallback = FALLBACK_BRANDS[vehicleType];
-      if (fallback && fallback.length > 0) {
-        setBrands(fallback);
-        toast({
-          title: "Aviso",
-          description: "API indisponível. Mostrando marcas principais.",
-        });
-        return;
-      }
-
-      const code = getErrorCode(e);
-      const msg = `Erro ao carregar marcas (${code}). Tente novamente.`;
-      setError(msg);
-      toast({ title: "Erro", description: msg, variant: "destructive" });
     } finally {
-      stopLoading();
+      setLoading(false);
     }
-  }, [brandsCacheKey, startLoading, stopLoading, vehicleType]);
+  }, [vehicleType, brandsCacheKey]);
 
-  const fetchModels = useCallback(
-    async (brandCode: string) => {
-      const reqId = ++modelsReqId.current;
-
-      if (!brandCode) {
-        setModels([]);
-        setYears([]);
-        setModelYears([]);
-        setResult(null);
-        return;
+  const fetchModels = useCallback(async (brandCode: string) => {
+    if (!brandCode) {
+      setAllModels([]);
+      setFilteredModels([]);
+      setYears([]);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    
+    // Sempre gerar anos, mesmo se modelos falharem
+    setYears(generateAllYears());
+    yearsCache.current = {};
+    
+    try {
+      const res = await fetchWithRetry(`${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos`, 3, 500);
+      if (!res) {
+        throw new Error('no_response');
       }
+      if (!res.ok) {
+        throw new Error(`http_${res.status}`);
+      }
+      const data = await res.json();
+      const models = data.modelos || [];
+      setAllModels(models);
+      setFilteredModels(models);
+    } catch (e) {
+      console.error('fetchModels error:', e);
+      setAllModels([]);
+      setFilteredModels([]);
+      const details = e instanceof Error ? e.message : 'unknown';
+      const msg = `Erro ao carregar modelos (${details}). Tente novamente.`;
+      setError(msg);
+      toast({ title: 'Erro', description: msg, variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  }, [vehicleType]);
 
-      // Sempre gerar anos (não depende do endpoint de modelos)
-      setYears(generateAllYears());
+  const fetchModelYearsData = useCallback(async (brandCode: string, modelCode: string): Promise<Year[]> => {
+    const cacheKey = `${brandCode}-${modelCode}`;
+    if (yearsCache.current[cacheKey]) {
+      return yearsCache.current[cacheKey];
+    }
 
-      // Primeiro: tenta cache para não deixar a UI vazia
-      const cachedModels = readCache<Model[]>(modelsCacheKey(brandCode));
-      if (cachedModels && cachedModels.length > 0) {
-        setModels(cachedModels);
+    try {
+      const res = await fetchWithRetry(
+        `${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos/${modelCode}/anos`,
+        3, 300
+      );
+      if (!res || !res.ok) return [];
+      const data = await res.json();
+      const validYears = filterValidYears(Array.isArray(data) ? data : []);
+      yearsCache.current[cacheKey] = validYears;
+      return validYears;
+    } catch {
+      return [];
+    }
+  }, [vehicleType]);
+
+  const filterModelsByYear = useCallback(async (brandCode: string, yearCode: string, models: Model[]) => {
+    if (!brandCode || !yearCode || models.length === 0) {
+      setFilteredModels(models);
+      return;
+    }
+
+    setFilteringModels(true);
+    const availableModels: Model[] = [];
+    const unknownModels: Model[] = [];
+
+    for (let i = 0; i < models.length; i++) {
+      const model = models[i];
+      const modelYearsData = await fetchModelYearsData(brandCode, String(model.codigo));
+      
+      if (modelYearsData.length === 0) {
+        unknownModels.push(model);
       } else {
-        setModels([]);
+        const hasYear = modelYearsData.some(y => 
+          y.codigo.startsWith(yearCode + '-') || y.codigo.startsWith(yearCode)
+        );
+        if (hasYear) availableModels.push(model);
       }
 
-      startLoading();
-      setError(null);
-
-      try {
-        const url = `${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos`;
-        const data = await fetchJsonWithRetry<{ modelos?: Model[] }>(url, {
-          retries: 3,
-          baseDelayMs: 500,
-          timeoutMs: 12_000,
-        });
-
-        if (reqId !== modelsReqId.current) return;
-
-        const list = Array.isArray(data?.modelos) ? data.modelos : [];
-        setModels(list);
-        writeCache(modelsCacheKey(brandCode), list);
-      } catch (e) {
-        if (reqId !== modelsReqId.current) return;
-
-        const cached = readCache<Model[]>(modelsCacheKey(brandCode));
-        if (cached && cached.length > 0) {
-          toast({
-            title: "Aviso",
-            description: `API instável. Mantendo modelos em cache (${getErrorCode(e)}).`,
-          });
-          return;
-        }
-
-        const msg = `Erro ao carregar modelos (${getErrorCode(e)}). Tente novamente.`;
-        setError(msg);
-        toast({ title: "Erro", description: msg, variant: "destructive" });
-      } finally {
-        stopLoading();
+      if (i < models.length - 1) await delay(30);
+      if ((i + 1) % 10 === 0) {
+        setFilteredModels([...availableModels, ...unknownModels]);
       }
-    },
-    [modelsCacheKey, startLoading, stopLoading, vehicleType]
-  );
+    }
 
-  const fetchModelYears = useCallback(
-    async (brandCode: string, modelCode: string) => {
-      const reqId = ++yearsReqId.current;
+    const finalModels = availableModels.length > 0 
+      ? [...availableModels, ...unknownModels]
+      : unknownModels.length > 0 ? unknownModels : [];
 
-      if (!brandCode || !modelCode) {
-        setModelYears([]);
-        return;
-      }
+    setFilteredModels(finalModels);
+    setFilteringModels(false);
 
-      const cacheKey = modelYearsCacheKey(brandCode, modelCode);
-      const cached = readCache<Year[]>(cacheKey);
-      if (cached && cached.length > 0) {
-        setModelYears(cached);
-      } else {
-        setModelYears([]);
-      }
+    if (finalModels.length === 0 && models.length > 0) {
+      toast({ 
+        title: 'Atenção', 
+        description: `Nenhum modelo encontrado para ${yearCode}.`,
+        variant: 'destructive'
+      });
+    }
+  }, [fetchModelYearsData]);
 
-      startLoading();
-      setError(null);
+  const fetchModelYears = useCallback(async (brandCode: string, modelCode: string) => {
+    if (!brandCode || !modelCode) {
+      setModelYears([]);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const years = await fetchModelYearsData(brandCode, modelCode);
+      if (years.length === 0) throw new Error('Erro ao carregar anos');
+      setModelYears(years);
+    } catch (e) {
+      console.error('fetchModelYears error:', e);
+      const msg = 'Erro ao carregar anos. Tente novamente.';
+      setError(msg);
+      toast({ title: 'Erro', description: msg, variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchModelYearsData]);
 
-      try {
-        const url = `${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos/${modelCode}/anos`;
-        const list = await fetchJsonWithRetry<Year[]>(url, {
-          retries: 3,
-          baseDelayMs: 350,
-          timeoutMs: 12_000,
-        });
-
-        if (reqId !== yearsReqId.current) return;
-
-        const valid = filterValidYears(Array.isArray(list) ? list : []);
-        setModelYears(valid);
-        writeCache(cacheKey, valid);
-      } catch (e) {
-        if (reqId !== yearsReqId.current) return;
-
-        const cachedAgain = readCache<Year[]>(cacheKey);
-        if (cachedAgain && cachedAgain.length > 0) {
-          toast({
-            title: "Aviso",
-            description: `API instável. Mantendo anos em cache (${getErrorCode(e)}).`,
-          });
-          return;
-        }
-
-        const msg = `Erro ao carregar anos (${getErrorCode(e)}). Tente novamente.`;
-        setError(msg);
-        toast({ title: "Erro", description: msg, variant: "destructive" });
-      } finally {
-        stopLoading();
-      }
-    },
-    [modelYearsCacheKey, startLoading, stopLoading, vehicleType]
-  );
-
-  const fetchResult = useCallback(
-    async (brandCode: string, modelCode: string, yearCode: string) => {
-      const reqId = ++resultReqId.current;
-
-      if (!brandCode || !modelCode || !yearCode) {
-        setResult(null);
-        return;
-      }
-
-      const cacheKey = resultCacheKey(brandCode, modelCode, yearCode);
-      const cached = readCache<FipeResult>(cacheKey);
-      if (cached) setResult(cached);
-
-      startLoading();
-      setError(null);
-
-      try {
-        const url = `${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos/${modelCode}/anos/${yearCode}`;
-        const data = await fetchJsonWithRetry<FipeResult>(url, {
-          retries: 3,
-          baseDelayMs: 350,
-          timeoutMs: 12_000,
-        });
-
-        if (reqId !== resultReqId.current) return;
-
-        setResult(data);
-        writeCache(cacheKey, data);
-      } catch (e) {
-        if (reqId !== resultReqId.current) return;
-
-        const cachedAgain = readCache<FipeResult>(cacheKey);
-        if (cachedAgain) {
-          toast({
-            title: "Aviso",
-            description: `API instável. Mostrando resultado em cache (${getErrorCode(e)}).`,
-          });
-          return;
-        }
-
-        const msg = `Erro ao buscar valor FIPE (${getErrorCode(e)}). Tente novamente.`;
-        setError(msg);
-        toast({ title: "Erro", description: msg, variant: "destructive" });
-      } finally {
-        stopLoading();
-      }
-    },
-    [resultCacheKey, startLoading, stopLoading, vehicleType]
-  );
+  const fetchResult = useCallback(async (brandCode: string, modelCode: string, yearCode: string) => {
+    if (!brandCode || !modelCode || !yearCode) {
+      setResult(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchWithRetry(
+        `${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos/${modelCode}/anos/${yearCode}`,
+        3, 300
+      );
+      if (!res || !res.ok) throw new Error('Erro ao buscar valor FIPE');
+      const data = await res.json();
+      setResult(data);
+    } catch (e) {
+      console.error('fetchResult error:', e);
+      const msg = 'Erro ao buscar valor FIPE. Tente novamente.';
+      setError(msg);
+      toast({ title: 'Erro', description: msg, variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  }, [vehicleType]);
 
   useEffect(() => {
     resetSelections();
-    setBrands([]);
     fetchBrands();
   }, [vehicleType, fetchBrands, resetSelections]);
 
   useEffect(() => {
-    if (!selectedBrand) {
-      setModels([]);
-      setYears([]);
+    if (selectedBrand) {
+      setSelectedModel('');
+      setSelectedYear('');
+      setPreSelectedYear('');
       setModelYears([]);
       setResult(null);
-      return;
+      fetchModels(selectedBrand);
     }
-
-    setSelectedModel("");
-    setSelectedYear("");
-    setPreSelectedYear("");
-    setModelYears([]);
-    setResult(null);
-    fetchModels(selectedBrand);
   }, [selectedBrand, fetchModels]);
 
-  // Ano pode ser escolhido antes do modelo: guardamos e validamos depois
   useEffect(() => {
-    if (selectedBrand && selectedYear && !selectedModel) {
+    if (selectedBrand && selectedYear && !selectedModel && allModels.length > 0) {
       setPreSelectedYear(selectedYear);
+      filterModelsByYear(selectedBrand, selectedYear, allModels);
+    } else if (!selectedYear && !selectedModel && allModels.length > 0) {
+      setPreSelectedYear('');
+      setFilteredModels(allModels);
     }
-
-    if (!selectedYear && !selectedModel) {
-      setPreSelectedYear("");
-    }
-  }, [selectedBrand, selectedYear, selectedModel]);
+  }, [selectedYear, selectedBrand, selectedModel, allModels, filterModelsByYear]);
 
   useEffect(() => {
     if (selectedModel) {
       setResult(null);
       fetchModelYears(selectedBrand, selectedModel);
-    } else {
-      setModelYears([]);
     }
   }, [selectedModel, selectedBrand, fetchModelYears]);
 
-  // Se o usuário escolheu ano antes, tenta aplicar o ano compatível do modelo
   useEffect(() => {
     if (!selectedModel || modelYears.length === 0) return;
-    if (!preSelectedYear) return;
 
-    const matchingYear = modelYears.find(
-      (y) => y.codigo.startsWith(preSelectedYear + "-") || y.codigo === preSelectedYear
-    );
-
-    if (matchingYear) {
-      setSelectedYear(matchingYear.codigo);
-    } else {
-      setSelectedYear("");
-      toast({
-        title: "Atenção",
-        description: "O ano selecionado não está disponível para este modelo.",
-        variant: "destructive",
-      });
+    if (preSelectedYear) {
+      const matchingYear = modelYears.find(y => 
+        y.codigo.startsWith(preSelectedYear + '-') || y.codigo === preSelectedYear
+      );
+      
+      if (matchingYear) {
+        setSelectedYear(matchingYear.codigo);
+      } else {
+        setSelectedYear('');
+        toast({ 
+          title: 'Atenção', 
+          description: 'O ano selecionado não está disponível para este modelo.',
+          variant: 'destructive'
+        });
+      }
+      setPreSelectedYear('');
     }
-
-    setPreSelectedYear("");
   }, [modelYears, selectedModel, preSelectedYear]);
 
   useEffect(() => {
-    if (!selectedModel || !selectedYear) return;
-
-    // Só busca resultado quando o ano vem da lista do modelo (formato esperado)
-    const yearValid = modelYears.some((y) => y.codigo === selectedYear);
-    const isValidFormat = selectedYear.includes("-");
-
-    // Se ainda não carregou modelYears, aguarda.
-    if (modelYears.length === 0) return;
-
-    if (isValidFormat && yearValid) {
-      fetchResult(selectedBrand, selectedModel, selectedYear);
+    if (selectedModel && selectedYear && modelYears.length > 0) {
+      const isValidFormat = selectedYear.includes('-');
+      const yearValid = modelYears.some(y => y.codigo === selectedYear);
+      if (isValidFormat && yearValid) {
+        fetchResult(selectedBrand, selectedModel, selectedYear);
+      }
     }
-  }, [selectedBrand, selectedModel, selectedYear, modelYears, fetchResult]);
+  }, [selectedYear, selectedBrand, selectedModel, modelYears, fetchResult]);
 
   const availableYears = selectedModel && modelYears.length > 0 ? modelYears : years;
 
   return {
     brands,
-    models,
+    models: filteredModels,
     years: availableYears,
     result,
-    loading: loadingCount > 0,
+    loading: loading || filteringModels,
     error,
     selectedBrand,
     selectedModel,
@@ -404,6 +430,6 @@ export function useFipeApi(vehicleType: VehicleType) {
     setSelectedBrand,
     setSelectedModel,
     setSelectedYear,
-    resetSelections,
+    resetSelections
   };
 }
