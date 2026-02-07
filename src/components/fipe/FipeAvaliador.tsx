@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronDown, Loader2 } from 'lucide-react';
-import { VehicleType, API_BASE, Brand, Model, Year, FipeResult, formatCurrencyInput, parseCurrency } from '@/lib/constants';
+import { ChevronDown, Loader2, WifiOff } from 'lucide-react';
+import { API_BASE, Brand, Model, Year, formatCurrencyInput, parseCurrency } from '@/lib/constants';
+import { FALLBACK_BRANDS, FALLBACK_MODELS } from '@/lib/fipeFallbackData';
 import { DealGauge } from './DealGauge';
 import { toast } from '@/hooks/use-toast';
 
@@ -12,6 +13,7 @@ export function FipeAvaliador() {
   const [selectedModel, setSelectedModel] = useState('');
   const [selectedYear, setSelectedYear] = useState('');
   const [loading, setLoading] = useState(false);
+  const [usingFallback, setUsingFallback] = useState(false);
   
   const [fipeValue, setFipeValue] = useState<number | null>(null);
   const [fipeDisplay, setFipeDisplay] = useState('');
@@ -20,41 +22,50 @@ export function FipeAvaliador() {
   const [ratio, setRatio] = useState(1);
 
   // Fetch with failover
-  const fetchWithFailover = async (endpoint: string) => {
+  const fetchWithFailover = useCallback(async (endpoint: string) => {
     const v1Url = `${API_BASE}/${endpoint}`;
+    const v2Url = `https://parallelum.com.br/fipe/api/v2/${endpoint}`;
     
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 8000);
-      
       const res = await fetch(v1Url, { signal: controller.signal });
       clearTimeout(timeout);
-      
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch {
-      // Fallback to v2
-      const v2Url = `https://parallelum.com.br/fipe/api/v2/${endpoint}`;
-      const res = await fetch(v2Url);
-      if (!res.ok) throw new Error(`v2 failed`);
-      return await res.json();
-    }
-  };
-
-  // Fetch brands on mount
-  useEffect(() => {
-    async function fetchBrands() {
       try {
-        const data = await fetchWithFailover('carros/marcas');
-        setBrands(Array.isArray(data) ? data : []);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch(v2Url, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (!res.ok) throw new Error(`v2 failed`);
+        return await res.json();
       } catch {
-        toast({ title: 'Erro ao carregar marcas', variant: 'destructive' });
+        return null;
       }
     }
-    fetchBrands();
   }, []);
 
-  // Fetch models
+  // Fetch brands on mount with fallback
+  useEffect(() => {
+    async function fetchBrands() {
+      setLoading(true);
+      const data = await fetchWithFailover('carros/marcas');
+      
+      if (Array.isArray(data) && data.length > 0) {
+        setBrands(data);
+        setUsingFallback(false);
+      } else {
+        setBrands(FALLBACK_BRANDS['carros']);
+        setUsingFallback(true);
+      }
+      setLoading(false);
+    }
+    fetchBrands();
+  }, [fetchWithFailover]);
+
+  // Fetch models with fallback
   useEffect(() => {
     if (!selectedBrand) {
       setModels([]);
@@ -64,19 +75,23 @@ export function FipeAvaliador() {
 
     async function fetchModels() {
       setLoading(true);
-      try {
-        const data = await fetchWithFailover(`carros/marcas/${selectedBrand}/modelos`);
-        setModels(Array.isArray(data?.modelos) ? data.modelos : []);
-      } catch {
-        toast({ title: 'Erro ao carregar modelos', variant: 'destructive' });
-      } finally {
-        setLoading(false);
+      const data = await fetchWithFailover(`carros/marcas/${selectedBrand}/modelos`);
+      
+      if (Array.isArray(data?.modelos) && data.modelos.length > 0) {
+        setModels(data.modelos);
+      } else {
+        const fallback = FALLBACK_MODELS[selectedBrand] || [];
+        setModels(fallback);
+        if (fallback.length === 0) {
+          toast({ title: 'Modelos indisponíveis', variant: 'destructive' });
+        }
       }
+      setLoading(false);
     }
     fetchModels();
-  }, [selectedBrand]);
+  }, [selectedBrand, fetchWithFailover]);
 
-  // Fetch years
+  // Fetch years with fallback
   useEffect(() => {
     if (!selectedModel) {
       setYears([]);
@@ -86,19 +101,25 @@ export function FipeAvaliador() {
 
     async function fetchYears() {
       setLoading(true);
-      try {
-        const data = await fetchWithFailover(
-          `carros/marcas/${selectedBrand}/modelos/${selectedModel}/anos`
-        );
-        setYears(Array.isArray(data) ? data : []);
-      } catch {
-        toast({ title: 'Erro ao carregar anos', variant: 'destructive' });
-      } finally {
-        setLoading(false);
+      const data = await fetchWithFailover(
+        `carros/marcas/${selectedBrand}/modelos/${selectedModel}/anos`
+      );
+      
+      if (Array.isArray(data) && data.length > 0) {
+        setYears(data);
+      } else {
+        // Generate fallback years
+        const currentYear = new Date().getFullYear();
+        const fallbackYears: Year[] = [];
+        for (let year = currentYear + 1; year >= currentYear - 10; year--) {
+          fallbackYears.push({ codigo: `${year}-1`, nome: `${year} Gasolina` });
+        }
+        setYears(fallbackYears);
       }
+      setLoading(false);
     }
     fetchYears();
-  }, [selectedModel, selectedBrand]);
+  }, [selectedModel, selectedBrand, fetchWithFailover]);
 
   // Fetch FIPE value when year is selected
   useEffect(() => {
@@ -110,21 +131,22 @@ export function FipeAvaliador() {
 
     async function fetchFipe() {
       setLoading(true);
-      try {
-        const data = await fetchWithFailover(
-          `carros/marcas/${selectedBrand}/modelos/${selectedModel}/anos/${selectedYear}`
-        );
+      const data = await fetchWithFailover(
+        `carros/marcas/${selectedBrand}/modelos/${selectedModel}/anos/${selectedYear}`
+      );
+      
+      if (data && (data.Valor || data.price)) {
         const valor = data.Valor || data.price || '';
         setFipeDisplay(valor);
         setFipeValue(parseCurrency(valor));
-      } catch {
-        toast({ title: 'Erro ao obter valor FIPE', variant: 'destructive' });
-      } finally {
-        setLoading(false);
+      } else {
+        toast({ title: 'Valor FIPE indisponível', variant: 'destructive' });
+        setFipeValue(null);
       }
+      setLoading(false);
     }
     fetchFipe();
-  }, [selectedYear, selectedBrand, selectedModel]);
+  }, [selectedYear, selectedBrand, selectedModel, fetchWithFailover]);
 
   const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatCurrencyInput(e.target.value);
@@ -158,6 +180,14 @@ export function FipeAvaliador() {
         <p className="text-sm text-muted-foreground">Oportunidade ou Golpe? Analise agora.</p>
       </div>
 
+      {/* Offline indicator */}
+      {usingFallback && (
+        <div className="flex items-center gap-2 text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-4 py-2 rounded-lg text-sm">
+          <WifiOff size={16} />
+          <span>Modo offline - dados limitados</span>
+        </div>
+      )}
+
       {/* Card de Input */}
       <div className="bg-card p-6 rounded-2xl shadow-sm border border-border">
         {/* Passo 1 */}
@@ -175,7 +205,9 @@ export function FipeAvaliador() {
                 onChange={(e) => setSelectedBrand(e.target.value)}
                 className="w-full p-3 rounded-lg bg-muted/50 border border-border text-sm appearance-none font-medium transition focus:border-primary focus:outline-none"
               >
-                <option value="">Selecione a Marca</option>
+                <option value="">
+                  {loading && !brands.length ? 'Carregando...' : 'Selecione a Marca'}
+                </option>
                 {brands.map((b) => (
                   <option key={b.codigo} value={b.codigo}>{b.nome}</option>
                 ))}
@@ -188,11 +220,15 @@ export function FipeAvaliador() {
               <select
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
-                disabled={!selectedBrand || !models.length}
+                disabled={!selectedBrand || (loading && !models.length)}
                 className="w-full p-3 rounded-lg bg-muted/50 border border-border text-sm appearance-none font-medium transition focus:border-primary focus:outline-none disabled:opacity-50"
               >
                 <option value="">
-                  {loading && selectedBrand ? 'Carregando...' : 'Selecione o Modelo'}
+                  {!selectedBrand 
+                    ? 'Selecione a Marca primeiro' 
+                    : loading && !models.length 
+                      ? 'Carregando...' 
+                      : 'Selecione o Modelo'}
                 </option>
                 {models.map((m) => (
                   <option key={m.codigo} value={String(m.codigo)}>{m.nome}</option>
@@ -206,11 +242,15 @@ export function FipeAvaliador() {
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
-                disabled={!selectedModel || !years.length}
+                disabled={!selectedModel || (loading && !years.length)}
                 className="w-full p-3 rounded-lg bg-muted/50 border border-border text-sm appearance-none font-medium transition focus:border-primary focus:outline-none disabled:opacity-50"
               >
                 <option value="">
-                  {loading && selectedModel ? 'Carregando...' : 'Selecione o Ano'}
+                  {!selectedModel 
+                    ? 'Selecione o Modelo primeiro' 
+                    : loading && !years.length 
+                      ? 'Carregando...' 
+                      : 'Selecione o Ano'}
                 </option>
                 {years.map((y) => (
                   <option key={y.codigo} value={y.codigo}>{y.nome}</option>
@@ -274,7 +314,7 @@ export function FipeAvaliador() {
             href={`https://wa.me/5589994171877?text=${whatsappMessage()}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="block w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl shadow-lg transition flex items-center justify-center gap-2 transform active:scale-95"
+            className="block w-full bg-[#25D366] hover:bg-[#128C7E] text-white font-bold py-3 rounded-xl shadow-lg transition flex items-center justify-center gap-2 transform active:scale-95"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>

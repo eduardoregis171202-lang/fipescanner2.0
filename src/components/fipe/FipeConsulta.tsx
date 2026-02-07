@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Loader2, Car, ChevronDown } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Loader2, Car, ChevronDown, WifiOff } from 'lucide-react';
 import { VehicleType, API_BASE, Brand, Model, Year, FipeResult } from '@/lib/constants';
+import { FALLBACK_BRANDS, FALLBACK_MODELS } from '@/lib/fipeFallbackData';
 import { VehicleTypeSelector } from './VehicleTypeSelector';
 import { toast } from '@/hooks/use-toast';
 
@@ -18,12 +19,14 @@ export function FipeConsulta({ onResult }: FipeConsultaProps) {
   const [selectedYear, setSelectedYear] = useState('');
   const [result, setResult] = useState<FipeResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [usingFallback, setUsingFallback] = useState(false);
 
-  // Fetch with failover to v2 API
-  const fetchWithFailover = async (endpoint: string) => {
+  // Fetch with failover and fallback support
+  const fetchWithFailover = useCallback(async (endpoint: string, fallbackKey?: string) => {
     const v1Url = `${API_BASE}/${endpoint}`;
     const v2Url = `https://parallelum.com.br/fipe/api/v2/${endpoint}`;
     
+    // Try v1 first
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 8000);
@@ -32,20 +35,32 @@ export function FipeConsulta({ onResult }: FipeConsultaProps) {
       clearTimeout(timeout);
       
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setUsingFallback(false);
       return await res.json();
-    } catch {
-      // Fallback to v2
-      try {
-        const res = await fetch(v2Url);
-        if (!res.ok) throw new Error(`v2 HTTP ${res.status}`);
-        return await res.json();
-      } catch {
-        throw new Error('Ambas APIs falharam');
-      }
+    } catch (e) {
+      console.log('v1 failed, trying v2...', e);
     }
-  };
+    
+    // Try v2
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      
+      const res = await fetch(v2Url, { signal: controller.signal });
+      clearTimeout(timeout);
+      
+      if (!res.ok) throw new Error(`v2 HTTP ${res.status}`);
+      setUsingFallback(false);
+      return await res.json();
+    } catch (e) {
+      console.log('v2 failed, using fallback...', e);
+    }
+    
+    // Return null to indicate API failure
+    return null;
+  }, []);
 
-  // Fetch brands
+  // Fetch brands with fallback
   useEffect(() => {
     async function fetchBrands() {
       setLoading(true);
@@ -57,22 +72,26 @@ export function FipeConsulta({ onResult }: FipeConsultaProps) {
       setSelectedYear('');
       setResult(null);
 
-      try {
-        const data = await fetchWithFailover(`${vehicleType}/marcas`);
-        setBrands(Array.isArray(data) ? data : []);
-      } catch {
+      const data = await fetchWithFailover(`${vehicleType}/marcas`);
+      
+      if (Array.isArray(data) && data.length > 0) {
+        setBrands(data);
+        setUsingFallback(false);
+      } else {
+        // Use fallback
+        const fallback = FALLBACK_BRANDS[vehicleType] || FALLBACK_BRANDS['carros'];
+        setBrands(fallback);
+        setUsingFallback(true);
         toast({ 
-          title: 'Erro ao carregar marcas', 
-          description: 'Verifique sua conexão',
-          variant: 'destructive' 
+          title: 'Modo offline', 
+          description: 'Usando dados locais. Alguns recursos limitados.',
         });
-        setBrands([]);
-      } finally {
-        setLoading(false);
       }
+      
+      setLoading(false);
     }
     fetchBrands();
-  }, [vehicleType]);
+  }, [vehicleType, fetchWithFailover]);
 
   // Fetch models when brand changes
   useEffect(() => {
@@ -93,22 +112,30 @@ export function FipeConsulta({ onResult }: FipeConsultaProps) {
       setSelectedYear('');
       setResult(null);
 
-      try {
-        const data = await fetchWithFailover(`${vehicleType}/marcas/${selectedBrand}/modelos`);
-        const modelos = data?.modelos;
-        setModels(Array.isArray(modelos) ? modelos : []);
-      } catch {
-        toast({ 
-          title: 'Erro ao carregar modelos', 
-          variant: 'destructive' 
-        });
-        setModels([]);
-      } finally {
-        setLoading(false);
+      const data = await fetchWithFailover(`${vehicleType}/marcas/${selectedBrand}/modelos`);
+      const modelos = data?.modelos;
+      
+      if (Array.isArray(modelos) && modelos.length > 0) {
+        setModels(modelos);
+      } else {
+        // Use fallback models
+        const fallback = FALLBACK_MODELS[selectedBrand] || [];
+        if (fallback.length > 0) {
+          setModels(fallback);
+          setUsingFallback(true);
+        } else {
+          toast({ 
+            title: 'Modelos indisponíveis', 
+            description: 'Não há modelos offline para esta marca',
+            variant: 'destructive' 
+          });
+        }
       }
+      
+      setLoading(false);
     }
     fetchModels();
-  }, [selectedBrand, vehicleType]);
+  }, [selectedBrand, vehicleType, fetchWithFailover]);
 
   // Fetch years when model changes
   useEffect(() => {
@@ -125,23 +152,29 @@ export function FipeConsulta({ onResult }: FipeConsultaProps) {
       setSelectedYear('');
       setResult(null);
 
-      try {
-        const data = await fetchWithFailover(
-          `${vehicleType}/marcas/${selectedBrand}/modelos/${selectedModel}/anos`
-        );
-        setYears(Array.isArray(data) ? data : []);
-      } catch {
-        toast({ 
-          title: 'Erro ao carregar anos', 
-          variant: 'destructive' 
-        });
-        setYears([]);
-      } finally {
-        setLoading(false);
+      const data = await fetchWithFailover(
+        `${vehicleType}/marcas/${selectedBrand}/modelos/${selectedModel}/anos`
+      );
+      
+      if (Array.isArray(data) && data.length > 0) {
+        setYears(data);
+      } else {
+        // Generate common years as fallback
+        const currentYear = new Date().getFullYear();
+        const fallbackYears: Year[] = [];
+        for (let year = currentYear + 1; year >= currentYear - 15; year--) {
+          fallbackYears.push({ codigo: `${year}-1`, nome: `${year} Gasolina` });
+          fallbackYears.push({ codigo: `${year}-3`, nome: `${year} Diesel` });
+        }
+        fallbackYears.push({ codigo: '32000-1', nome: '0 KM' });
+        setYears(fallbackYears);
+        setUsingFallback(true);
       }
+      
+      setLoading(false);
     }
     fetchYears();
-  }, [selectedModel, selectedBrand, vehicleType]);
+  }, [selectedModel, selectedBrand, vehicleType, fetchWithFailover]);
 
   // Fetch FIPE result when year changes
   useEffect(() => {
@@ -154,12 +187,12 @@ export function FipeConsulta({ onResult }: FipeConsultaProps) {
     async function fetchResult() {
       setLoading(true);
 
-      try {
-        const data = await fetchWithFailover(
-          `${vehicleType}/marcas/${selectedBrand}/modelos/${selectedModel}/anos/${selectedYear}`
-        );
-        
-        // Normalize v2 response if needed
+      const data = await fetchWithFailover(
+        `${vehicleType}/marcas/${selectedBrand}/modelos/${selectedModel}/anos/${selectedYear}`
+      );
+      
+      if (data && (data.Valor || data.price)) {
+        // Normalize response
         const normalized: FipeResult = {
           Valor: data.Valor || data.price || data.valor,
           Marca: data.Marca || data.brand || '',
@@ -174,19 +207,20 @@ export function FipeConsulta({ onResult }: FipeConsultaProps) {
         
         setResult(normalized);
         onResult?.(normalized);
-      } catch {
+      } else {
         toast({ 
-          title: 'Erro ao buscar valor FIPE', 
+          title: 'Valor indisponível', 
+          description: 'Não foi possível obter o preço FIPE',
           variant: 'destructive' 
         });
         setResult(null);
         onResult?.(null);
-      } finally {
-        setLoading(false);
       }
+      
+      setLoading(false);
     }
     fetchResult();
-  }, [selectedYear, selectedModel, selectedBrand, vehicleType, onResult]);
+  }, [selectedYear, selectedModel, selectedBrand, vehicleType, onResult, fetchWithFailover]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -194,6 +228,14 @@ export function FipeConsulta({ onResult }: FipeConsultaProps) {
         <h2 className="text-2xl font-bold text-foreground mb-1">Tabela Fipe</h2>
         <p className="text-sm text-muted-foreground">Consulte o preço oficial de mercado.</p>
       </div>
+
+      {/* Offline indicator */}
+      {usingFallback && (
+        <div className="flex items-center gap-2 text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-4 py-2 rounded-lg text-sm">
+          <WifiOff size={16} />
+          <span>Modo offline - dados limitados</span>
+        </div>
+      )}
 
       <VehicleTypeSelector value={vehicleType} onChange={setVehicleType} />
 
@@ -231,13 +273,15 @@ export function FipeConsulta({ onResult }: FipeConsultaProps) {
             <select
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
-              disabled={!selectedBrand || !models.length}
+              disabled={!selectedBrand || (loading && !models.length)}
               className="w-full p-4 rounded-xl bg-muted/50 border border-border appearance-none font-medium transition focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50 disabled:bg-muted/30"
             >
               <option value="">
-                {loading && selectedBrand && !models.length 
-                  ? 'Carregando...' 
-                  : 'Selecione o Modelo'}
+                {!selectedBrand 
+                  ? 'Selecione a Marca primeiro' 
+                  : loading && !models.length 
+                    ? 'Carregando...' 
+                    : 'Selecione o Modelo'}
               </option>
               {models.map((m) => (
                 <option key={m.codigo} value={String(m.codigo)}>{m.nome}</option>
@@ -256,13 +300,15 @@ export function FipeConsulta({ onResult }: FipeConsultaProps) {
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(e.target.value)}
-              disabled={!selectedModel || !years.length}
+              disabled={!selectedModel || (loading && !years.length)}
               className="w-full p-4 rounded-xl bg-muted/50 border border-border appearance-none font-medium transition focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50 disabled:bg-muted/30"
             >
               <option value="">
-                {loading && selectedModel && !years.length 
-                  ? 'Carregando...' 
-                  : 'Selecione o Ano'}
+                {!selectedModel 
+                  ? 'Selecione o Modelo primeiro' 
+                  : loading && !years.length 
+                    ? 'Carregando...' 
+                    : 'Selecione o Ano'}
               </option>
               {years.map((y) => (
                 <option key={y.codigo} value={y.codigo}>{y.nome}</option>
