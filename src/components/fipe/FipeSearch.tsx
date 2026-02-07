@@ -51,9 +51,10 @@ export function FipeSearch({
       try {
         const res = await fetch(`${API_BASE}/${vehicleType}/marcas`);
         const data = await res.json();
-        setBrands(data);
+        setBrands(Array.isArray(data) ? data : []);
       } catch {
         toast({ title: 'Erro', description: 'Não foi possível carregar as marcas', variant: 'destructive' });
+        setBrands([]);
       } finally {
         setLoading(false);
       }
@@ -83,9 +84,11 @@ export function FipeSearch({
       try {
         const res = await fetch(`${API_BASE}/${vehicleType}/marcas/${selectedBrand}/modelos`);
         const data = await res.json();
-        setModels(data.modelos || []);
+        const modelos = data?.modelos;
+        setModels(Array.isArray(modelos) ? modelos : []);
       } catch {
         toast({ title: 'Erro', description: 'Não foi possível carregar os modelos', variant: 'destructive' });
+        setModels([]);
       } finally {
         setLoading(false);
       }
@@ -111,9 +114,10 @@ export function FipeSearch({
       try {
         const res = await fetch(`${API_BASE}/${vehicleType}/marcas/${selectedBrand}/modelos/${selectedModel}/anos`);
         const data = await res.json();
-        setYears(data);
+        setYears(Array.isArray(data) ? data : []);
       } catch {
         toast({ title: 'Erro', description: 'Não foi possível carregar os anos', variant: 'destructive' });
+        setYears([]);
       } finally {
         setLoading(false);
       }
