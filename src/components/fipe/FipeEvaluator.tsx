@@ -178,6 +178,16 @@ export function FipeEvaluator({
         />
 
         <SearchableSelect
+          options={yearOptions}
+          value={selectedYear}
+          onChange={setSelectedYear}
+          placeholder="Selecione o Ano"
+          label="Ano"
+          disabled={!selectedBrand}
+          loading={loading && selectedBrand && !years.length}
+        />
+
+        <SearchableSelect
           options={modelOptions}
           value={selectedModel}
           onChange={setSelectedModel}
@@ -185,16 +195,6 @@ export function FipeEvaluator({
           label="Modelo"
           disabled={!selectedBrand}
           loading={loading && selectedBrand && !models.length}
-        />
-
-        <SearchableSelect
-          options={yearOptions}
-          value={selectedYear}
-          onChange={setSelectedYear}
-          placeholder="Selecione o Ano"
-          label="Ano"
-          disabled={!selectedModel}
-          loading={loading && selectedModel && !years.length}
         />
       </div>
 
