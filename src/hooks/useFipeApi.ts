@@ -5,6 +5,55 @@ import { toast } from '@/hooks/use-toast';
 const MIN_YEAR = 1980;
 const MAX_YEAR = new Date().getFullYear() + 1;
 
+// Fallback brands when API is unavailable
+const FALLBACK_BRANDS: Record<VehicleType, Brand[]> = {
+  carros: [
+    { codigo: "59", nome: "VW - VolksWagen" },
+    { codigo: "25", nome: "FIAT" },
+    { codigo: "22", nome: "CHEVROLET" },
+    { codigo: "56", nome: "TOYOTA" },
+    { codigo: "26", nome: "FORD" },
+    { codigo: "29", nome: "HONDA" },
+    { codigo: "32", nome: "HYUNDAI" },
+    { codigo: "43", nome: "RENAULT" },
+    { codigo: "36", nome: "JEEP" },
+    { codigo: "40", nome: "NISSAN" },
+    { codigo: "39", nome: "MITSUBISHI" },
+    { codigo: "6", nome: "AUDI" },
+    { codigo: "7", nome: "BMW" },
+    { codigo: "38", nome: "MERCEDES-BENZ" },
+    { codigo: "41", nome: "PEUGEOT" },
+    { codigo: "21", nome: "CITROEN" },
+    { codigo: "37", nome: "KIA" },
+    { codigo: "48", nome: "SUZUKI" },
+    { codigo: "18", nome: "CHERY" },
+    { codigo: "102", nome: "BYD" },
+    { codigo: "171", nome: "RAM" },
+    { codigo: "51", nome: "TROLLER" }
+  ],
+  motos: [
+    { codigo: "60", nome: "HONDA" },
+    { codigo: "119", nome: "YAMAHA" },
+    { codigo: "109", nome: "SUZUKI" },
+    { codigo: "67", nome: "KAWASAKI" },
+    { codigo: "50", nome: "DAFRA" },
+    { codigo: "101", nome: "SHINERAY" },
+    { codigo: "27", nome: "BMW" },
+    { codigo: "73", nome: "TRIUMPH" },
+    { codigo: "59", nome: "HARLEY-DAVIDSON" },
+    { codigo: "53", nome: "DUCATI" }
+  ],
+  caminhoes: [
+    { codigo: "114", nome: "VOLVO" },
+    { codigo: "103", nome: "SCANIA" },
+    { codigo: "102", nome: "MERCEDES-BENZ" },
+    { codigo: "111", nome: "VW - VOLKSWAGEN" },
+    { codigo: "101", nome: "IVECO" },
+    { codigo: "116", nome: "DAF" },
+    { codigo: "104", nome: "FORD" }
+  ]
+};
+
 function filterValidYears(years: Year[]): Year[] {
   return years.filter(year => {
     const yearMatch = year.codigo.match(/^(\d+)/);
@@ -120,20 +169,30 @@ export function useFipeApi(vehicleType: VehicleType) {
       setBrands(list);
       writeCache(brandsCacheKey, list);
     } catch (e) {
-      // Fallback: usar cache local para não ficar sem marcas
+      console.error('fetchBrands error:', e);
+      // Fallback 1: cache local
       const cached = readCache<Brand[]>(brandsCacheKey);
       if (cached && cached.length > 0) {
         setBrands(cached);
         toast({
           title: 'Aviso',
-          description: 'Não foi possível atualizar as marcas agora. Mostrando lista em cache.',
+          description: 'API indisponível. Mostrando marcas em cache.',
         });
       } else {
-        console.error('fetchBrands error:', e);
-        const details = e instanceof Error ? e.message : 'unknown';
-        const msg = `Erro ao carregar marcas (${details}). Tente novamente.`;
-        setError(msg);
-        toast({ title: 'Erro', description: msg, variant: 'destructive' });
+        // Fallback 2: lista embutida no código
+        const fallback = FALLBACK_BRANDS[vehicleType];
+        if (fallback && fallback.length > 0) {
+          setBrands(fallback);
+          toast({
+            title: 'Aviso',
+            description: 'API indisponível. Mostrando marcas principais.',
+          });
+        } else {
+          const details = e instanceof Error ? e.message : 'unknown';
+          const msg = `Erro ao carregar marcas (${details}). Tente novamente.`;
+          setError(msg);
+          toast({ title: 'Erro', description: msg, variant: 'destructive' });
+        }
       }
     } finally {
       setLoading(false);
