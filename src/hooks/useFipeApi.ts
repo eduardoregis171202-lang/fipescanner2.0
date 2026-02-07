@@ -235,47 +235,57 @@ export function useFipeApi(vehicleType: VehicleType) {
   useEffect(() => {
     if (selectedModel) {
       setResult(null);
+      setYearValidated(false);
       fetchModelYears(selectedBrand, selectedModel);
     }
   }, [selectedModel, selectedBrand, fetchModelYears]);
 
-  // Resetar validação quando modelo muda
+  // Validar e ajustar ano quando anos específicos do modelo carregam
   useEffect(() => {
-    setYearValidated(false);
-  }, [selectedModel]);
-
-  // Validar ano selecionado quando anos específicos do modelo carregam
-  useEffect(() => {
-    if (selectedModel && modelYears.length > 0) {
-      if (selectedYear) {
-        const yearExists = modelYears.some(y => y.codigo === selectedYear);
-        if (!yearExists) {
-          // Ano pré-selecionado não disponível para este modelo
-          setSelectedYear('');
-          toast({ 
-            title: 'Atenção', 
-            description: 'O ano selecionado não está disponível para este modelo. Selecione outro ano.',
-            variant: 'destructive'
-          });
-        } else {
-          setYearValidated(true);
-        }
-      }
-      // Se não há ano selecionado, marcar como validado (usuário vai selecionar)
-      if (!selectedYear) {
-        setYearValidated(true);
-      }
+    if (!selectedModel || modelYears.length === 0) {
+      return;
     }
-  }, [modelYears, selectedYear, selectedModel]);
+
+    // Se não há ano selecionado, apenas marcar como pronto para seleção
+    if (!selectedYear) {
+      setYearValidated(true);
+      return;
+    }
+
+    // Verificar se o ano selecionado (formato "2024") existe nos modelYears (formato "2024-1")
+    // Precisamos encontrar um ano que comece com o código selecionado
+    const matchingYear = modelYears.find(y => y.codigo.startsWith(selectedYear + '-') || y.codigo === selectedYear);
+    
+    if (matchingYear) {
+      // Se encontrou um match, usar o código completo da API
+      if (matchingYear.codigo !== selectedYear) {
+        setSelectedYear(matchingYear.codigo);
+      }
+      setYearValidated(true);
+    } else {
+      // Ano não disponível para este modelo
+      setSelectedYear('');
+      setYearValidated(true);
+      toast({ 
+        title: 'Atenção', 
+        description: 'O ano selecionado não está disponível para este modelo. Selecione outro ano.',
+        variant: 'destructive'
+      });
+    }
+  }, [modelYears, selectedModel]);
 
   // Buscar resultado APENAS quando:
   // 1. Modelo e ano estiverem selecionados
   // 2. Anos do modelo já foram carregados
   // 3. O ano foi validado como disponível para o modelo
+  // 4. O código do ano está no formato correto da API (contém "-")
   useEffect(() => {
     if (selectedModel && selectedYear && yearValidated && modelYears.length > 0) {
+      // Verificar se o ano está no formato correto (ex: "2024-1")
+      const isValidYearFormat = selectedYear.includes('-');
       const yearValid = modelYears.some(y => y.codigo === selectedYear);
-      if (yearValid) {
+      
+      if (isValidYearFormat && yearValid) {
         fetchResult(selectedBrand, selectedModel, selectedYear);
       }
     }
