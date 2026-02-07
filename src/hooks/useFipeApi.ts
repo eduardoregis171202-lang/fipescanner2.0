@@ -189,7 +189,12 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 async function fetchWithRetry(url: string, retries = 3, delayMs = 300): Promise<Response | null> {
   for (let i = 0; i < retries; i++) {
     try {
-      const res = await fetch(url);
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+
+      const res = await fetch(url, { signal: controller.signal });
+      window.clearTimeout(timeoutId);
+
       if (res.ok) return res;
 
       // Retry em rate limit e falhas temporárias
@@ -227,6 +232,78 @@ const writeCache = (key: string, value: unknown) => {
     // ignore quota/private mode
   }
 };
+
+type ApiProvider = 'v1' | 'v2';
+
+const API_BASE_V2 = "https://fipe.parallelum.com.br/api/v2";
+
+const vehicleTypeToV2 = (vehicleType: VehicleType) => {
+  switch (vehicleType) {
+    case 'carros':
+      return 'cars' as const;
+    case 'motos':
+      return 'motorcycles' as const;
+    case 'caminhoes':
+      return 'trucks' as const;
+  }
+};
+
+type V2Brand = { code: string; name: string };
+type V2Model = { code: string; name: string };
+type V2Year = { code: string; name: string };
+type V2FipeResult = {
+  price: string;
+  brand: string;
+  model: string;
+  modelYear: number;
+  fuel: string;
+  fuelAcronym: string;
+  codeFipe: string;
+  referenceMonth: string;
+  vehicleType: number;
+};
+
+async function fetchFromProviders<T>(
+  attempts: Array<{ provider: ApiProvider; url: string; parse: (data: any) => T }>,
+  retries = 3,
+  delayMs = 300
+): Promise<{ data: T; provider: ApiProvider }> {
+  let lastError: Error | null = null;
+
+  for (const attempt of attempts) {
+    const res = await fetchWithRetry(attempt.url, retries, delayMs);
+
+    if (!res) {
+      lastError = new Error('no_response');
+      continue;
+    }
+
+    if (!res.ok) {
+      lastError = new Error(`http_${res.status}`);
+      continue;
+    }
+
+    const json = await res.json();
+    return { data: attempt.parse(json), provider: attempt.provider };
+  }
+
+  throw lastError ?? new Error('unknown');
+}
+
+const mapV2Brand = (b: V2Brand): Brand => ({ codigo: b.code, nome: b.name });
+const mapV2Model = (m: V2Model): Model => ({ codigo: Number(m.code), nome: m.name });
+const mapV2Year = (y: V2Year): Year => ({ codigo: y.code, nome: y.name });
+const mapV2Result = (r: V2FipeResult): FipeResult => ({
+  Valor: r.price,
+  Marca: r.brand,
+  Modelo: r.model,
+  AnoModelo: r.modelYear,
+  Combustivel: r.fuel,
+  CodigoFipe: r.codeFipe,
+  MesReferencia: r.referenceMonth,
+  TipoVeiculo: r.vehicleType,
+  SiglaCombustivel: r.fuelAcronym,
+});
 
 export function useFipeApi(vehicleType: VehicleType) {
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -267,18 +344,25 @@ export function useFipeApi(vehicleType: VehicleType) {
     setError(null);
 
     try {
-      const url = `${API_BASE}/${vehicleType}/marcas`;
-      const res = await fetchWithRetry(url);
+      const v2Type = vehicleTypeToV2(vehicleType);
 
-      if (!res) {
-        throw new Error('no_response');
-      }
-      if (!res.ok) {
-        throw new Error(`http_${res.status}`);
-      }
+      const { data: list } = await fetchFromProviders<Brand[]>(
+        [
+          {
+            provider: 'v1',
+            url: `${API_BASE}/${vehicleType}/marcas`,
+            parse: (data) => (Array.isArray(data) ? (data as Brand[]) : []),
+          },
+          {
+            provider: 'v2',
+            url: `${API_BASE_V2}/${v2Type}/brands`,
+            parse: (data) => (Array.isArray(data) ? (data as V2Brand[]).map(mapV2Brand) : []),
+          },
+        ],
+        3,
+        300
+      );
 
-      const data = await res.json();
-      const list = Array.isArray(data) ? (data as Brand[]) : [];
       setBrands(list);
       writeCache(brandsCacheKey, list);
     } catch (e) {
@@ -327,15 +411,25 @@ export function useFipeApi(vehicleType: VehicleType) {
     yearsCache.current = {};
     
     try {
-      const res = await fetchWithRetry(`${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos`, 3, 500);
-      if (!res) {
-        throw new Error('no_response');
-      }
-      if (!res.ok) {
-        throw new Error(`http_${res.status}`);
-      }
-      const data = await res.json();
-      const models = data.modelos || [];
+      const v2Type = vehicleTypeToV2(vehicleType);
+
+      const { data: models } = await fetchFromProviders<Model[]>(
+        [
+          {
+            provider: 'v1',
+            url: `${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos`,
+            parse: (data) => (data?.modelos ? (data.modelos as Model[]) : []),
+          },
+          {
+            provider: 'v2',
+            url: `${API_BASE_V2}/${v2Type}/brands/${brandCode}/models`,
+            parse: (data) => (Array.isArray(data) ? (data as V2Model[]).map(mapV2Model) : []),
+          },
+        ],
+        3,
+        500
+      );
+
       setAllModels(models);
       setFilteredModels(models);
     } catch (e) {
@@ -369,13 +463,25 @@ export function useFipeApi(vehicleType: VehicleType) {
     }
 
     try {
-      const res = await fetchWithRetry(
-        `${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos/${modelCode}/anos`,
-        3, 300
+      const v2Type = vehicleTypeToV2(vehicleType);
+
+      const { data: validYears } = await fetchFromProviders<Year[]>(
+        [
+          {
+            provider: 'v1',
+            url: `${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos/${modelCode}/anos`,
+            parse: (data) => filterValidYears(Array.isArray(data) ? (data as Year[]) : []),
+          },
+          {
+            provider: 'v2',
+            url: `${API_BASE_V2}/${v2Type}/brands/${brandCode}/models/${modelCode}/years`,
+            parse: (data) => filterValidYears(Array.isArray(data) ? (data as V2Year[]).map(mapV2Year) : []),
+          },
+        ],
+        3,
+        300
       );
-      if (!res || !res.ok) return [];
-      const data = await res.json();
-      const validYears = filterValidYears(Array.isArray(data) ? data : []);
+
       yearsCache.current[cacheKey] = validYears;
       return validYears;
     } catch {
@@ -457,12 +563,25 @@ export function useFipeApi(vehicleType: VehicleType) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchWithRetry(
-        `${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos/${modelCode}/anos/${yearCode}`,
-        3, 300
+      const v2Type = vehicleTypeToV2(vehicleType);
+
+      const { data } = await fetchFromProviders<FipeResult>(
+        [
+          {
+            provider: 'v1',
+            url: `${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos/${modelCode}/anos/${yearCode}`,
+            parse: (json) => json as FipeResult,
+          },
+          {
+            provider: 'v2',
+            url: `${API_BASE_V2}/${v2Type}/brands/${brandCode}/models/${modelCode}/years/${yearCode}`,
+            parse: (json) => mapV2Result(json as V2FipeResult),
+          },
+        ],
+        3,
+        300
       );
-      if (!res || !res.ok) throw new Error('Erro ao buscar valor FIPE');
-      const data = await res.json();
+
       setResult(data);
     } catch (e) {
       console.error('fetchResult error:', e);
