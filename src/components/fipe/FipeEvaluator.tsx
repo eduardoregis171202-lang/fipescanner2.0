@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Car, Bike, Truck, Loader2, Share2, Copy, Check, Scale } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -114,10 +114,12 @@ export function FipeEvaluator({
     };
   }, [result, selectedBrand, selectedModel, selectedYear, brands, models, years]);
 
-  // Save to history when result loads
-  if (currentHistoryItem && result?.CodigoFipe) {
-    onSaveToHistory(currentHistoryItem);
-  }
+  // Save to history when result loads (avoid side effects during render)
+  useEffect(() => {
+    if (currentHistoryItem && result?.CodigoFipe) {
+      onSaveToHistory(currentHistoryItem);
+    }
+  }, [currentHistoryItem, result?.CodigoFipe, onSaveToHistory]);
 
   const handleAddToCompareClick = () => {
     if (currentHistoryItem && !isInCompareList && compareList.length < 3) {
