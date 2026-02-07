@@ -22,15 +22,13 @@ function filterValidYears(years: Year[]): Year[] {
 
 // Gera lista completa de anos para seleção inicial (quando só a marca foi escolhida)
 // A API FIPE retorna dados incompletos a nível de marca, então geramos todos os anos possíveis
+// Mostra apenas o ano, sem variações de combustível - a variação será determinada pelo modelo
 function generateAllYears(): Year[] {
   const years: Year[] = [];
   
   // Gera anos do mais recente ao mais antigo
   for (let year = MAX_YEAR; year >= MIN_YEAR; year--) {
-    // Adiciona variações comuns de combustível
-    years.push({ codigo: `${year}-1`, nome: `${year} Gasolina` });
-    years.push({ codigo: `${year}-2`, nome: `${year} Álcool` });
-    years.push({ codigo: `${year}-3`, nome: `${year} Diesel` });
+    years.push({ codigo: `${year}`, nome: `${year}` });
   }
   
   return years;
