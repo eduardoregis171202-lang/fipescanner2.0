@@ -1,6 +1,24 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { API_BASE, Brand, Model, Year, FipeResult, VehicleType } from '@/lib/constants';
 import { toast } from '@/hooks/use-toast';
+
+// Filtra anos inválidos (ex: 32000) - mantém apenas anos entre 1980 e ano atual + 1
+function filterValidYears(years: Year[]): Year[] {
+  const currentYear = new Date().getFullYear();
+  const minYear = 1980;
+  const maxYear = currentYear + 1; // Permite veículos do próximo ano
+  
+  return years.filter(year => {
+    // Extrai o número do ano do código (ex: "2024-1" -> 2024)
+    const yearMatch = year.codigo.match(/^(\d+)/);
+    if (!yearMatch) return false;
+    
+    const yearNumber = parseInt(yearMatch[1], 10);
+    
+    // Verifica se é um ano válido
+    return yearNumber >= minYear && yearNumber <= maxYear;
+  });
+}
 
 export function useFipeApi(vehicleType: VehicleType) {
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -60,8 +78,9 @@ export function useFipeApi(vehicleType: VehicleType) {
       if (!res.ok) throw new Error('Erro ao carregar modelos');
       const data = await res.json();
       setModels(data.modelos || []);
-      // A API retorna anos disponíveis para a marca também
-      setYears(Array.isArray(data.anos) ? data.anos : []);
+      // A API retorna anos disponíveis para a marca também - filtrar anos inválidos
+      const rawYears = Array.isArray(data.anos) ? data.anos : [];
+      setYears(filterValidYears(rawYears));
     } catch (e) {
       const msg = 'Erro ao carregar modelos. Tente novamente.';
       setError(msg);
@@ -83,7 +102,8 @@ export function useFipeApi(vehicleType: VehicleType) {
       const res = await fetch(`${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos/${modelCode}/anos`);
       if (!res.ok) throw new Error('Erro ao carregar anos');
       const data = await res.json();
-      setModelYears(Array.isArray(data) ? data : []);
+      const rawYears = Array.isArray(data) ? data : [];
+      setModelYears(filterValidYears(rawYears));
     } catch (e) {
       const msg = 'Erro ao carregar anos. Tente novamente.';
       setError(msg);
