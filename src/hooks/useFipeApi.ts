@@ -54,6 +54,119 @@ const FALLBACK_BRANDS: Record<VehicleType, Brand[]> = {
   ]
 };
 
+// Fallback models for popular brands when API is unavailable
+const FALLBACK_MODELS: Record<string, Model[]> = {
+  // VW - VolksWagen (codigo: 59)
+  "59": [
+    { codigo: 5940, nome: "Gol 1.0" },
+    { codigo: 5941, nome: "Gol 1.6" },
+    { codigo: 6756, nome: "Polo 1.0 TSI" },
+    { codigo: 6757, nome: "Polo 1.4 TSI" },
+    { codigo: 6673, nome: "T-Cross 1.0 TSI" },
+    { codigo: 6674, nome: "T-Cross 1.4 TSI" },
+    { codigo: 6826, nome: "Nivus 1.0 TSI" },
+    { codigo: 6549, nome: "Virtus 1.0 TSI" },
+    { codigo: 6550, nome: "Virtus 1.4 TSI" },
+    { codigo: 6286, nome: "Jetta 1.4 TSI" },
+    { codigo: 6287, nome: "Jetta 2.0 TSI" },
+    { codigo: 6680, nome: "Taos 1.4 TSI" },
+    { codigo: 6571, nome: "Tiguan 1.4 TSI" },
+    { codigo: 6572, nome: "Tiguan 2.0 TSI" },
+    { codigo: 6688, nome: "Amarok 2.0 TDI" },
+    { codigo: 6689, nome: "Amarok 3.0 V6 TDI" },
+    { codigo: 5585, nome: "Fox 1.0" },
+    { codigo: 5586, nome: "Fox 1.6" },
+    { codigo: 5665, nome: "Saveiro 1.6" },
+    { codigo: 5503, nome: "Voyage 1.0" },
+    { codigo: 5504, nome: "Voyage 1.6" }
+  ],
+  // FIAT (codigo: 25)
+  "25": [
+    { codigo: 5765, nome: "Argo 1.0" },
+    { codigo: 5766, nome: "Argo 1.3" },
+    { codigo: 5767, nome: "Argo 1.8" },
+    { codigo: 7099, nome: "Cronos 1.0" },
+    { codigo: 7100, nome: "Cronos 1.3" },
+    { codigo: 7101, nome: "Cronos 1.8" },
+    { codigo: 7355, nome: "Pulse 1.0 Turbo" },
+    { codigo: 7356, nome: "Pulse 1.3 Turbo" },
+    { codigo: 7400, nome: "Fastback 1.0 Turbo" },
+    { codigo: 7401, nome: "Fastback 1.3 Turbo" },
+    { codigo: 5801, nome: "Mobi 1.0" },
+    { codigo: 6160, nome: "Strada 1.3" },
+    { codigo: 6161, nome: "Strada 1.4" },
+    { codigo: 6162, nome: "Strada 1.8" },
+    { codigo: 5608, nome: "Toro 1.8" },
+    { codigo: 5609, nome: "Toro 2.0 Diesel" },
+    { codigo: 5350, nome: "Uno 1.0" },
+    { codigo: 5351, nome: "Uno 1.4" }
+  ],
+  // CHEVROLET (codigo: 22)
+  "22": [
+    { codigo: 6408, nome: "Onix 1.0" },
+    { codigo: 6409, nome: "Onix 1.0 Turbo" },
+    { codigo: 6410, nome: "Onix Plus 1.0 Turbo" },
+    { codigo: 6705, nome: "Tracker 1.0 Turbo" },
+    { codigo: 6706, nome: "Tracker 1.2 Turbo" },
+    { codigo: 6140, nome: "S10 2.5" },
+    { codigo: 6141, nome: "S10 2.8 Diesel" },
+    { codigo: 6142, nome: "Trailblazer 2.8 Diesel" },
+    { codigo: 6280, nome: "Spin 1.8" },
+    { codigo: 6350, nome: "Cruze 1.4 Turbo" },
+    { codigo: 6805, nome: "Montana 1.2 Turbo" },
+    { codigo: 5720, nome: "Cobalt 1.4" },
+    { codigo: 5721, nome: "Cobalt 1.8" },
+    { codigo: 5580, nome: "Prisma 1.0" },
+    { codigo: 5581, nome: "Prisma 1.4" }
+  ],
+  // TOYOTA (codigo: 56)
+  "56": [
+    { codigo: 6255, nome: "Corolla 1.8" },
+    { codigo: 6256, nome: "Corolla 2.0" },
+    { codigo: 6257, nome: "Corolla Cross 1.8 Hybrid" },
+    { codigo: 6258, nome: "Corolla Cross 2.0" },
+    { codigo: 6420, nome: "Yaris 1.3" },
+    { codigo: 6421, nome: "Yaris 1.5" },
+    { codigo: 6422, nome: "Yaris Sedan 1.5" },
+    { codigo: 6130, nome: "Hilux 2.7" },
+    { codigo: 6131, nome: "Hilux 2.8 Diesel" },
+    { codigo: 6132, nome: "SW4 2.7" },
+    { codigo: 6133, nome: "SW4 2.8 Diesel" },
+    { codigo: 6650, nome: "RAV4 2.5 Hybrid" },
+    { codigo: 5980, nome: "Etios 1.3" },
+    { codigo: 5981, nome: "Etios 1.5" }
+  ],
+  // HONDA (codigo: 29)
+  "29": [
+    { codigo: 6180, nome: "Civic 1.5 Turbo" },
+    { codigo: 6181, nome: "Civic 2.0" },
+    { codigo: 6315, nome: "City 1.5" },
+    { codigo: 6316, nome: "City Hatch 1.5" },
+    { codigo: 6500, nome: "HR-V 1.5 Turbo" },
+    { codigo: 6501, nome: "HR-V 1.8" },
+    { codigo: 6390, nome: "CR-V 1.5 Turbo" },
+    { codigo: 6391, nome: "CR-V 2.0 Hybrid" },
+    { codigo: 6600, nome: "ZR-V 2.0 Hybrid" },
+    { codigo: 5680, nome: "Fit 1.4" },
+    { codigo: 5681, nome: "Fit 1.5" },
+    { codigo: 5755, nome: "WR-V 1.5" }
+  ],
+  // HYUNDAI (codigo: 32)
+  "32": [
+    { codigo: 6220, nome: "HB20 1.0" },
+    { codigo: 6221, nome: "HB20 1.0 Turbo" },
+    { codigo: 6222, nome: "HB20 1.6" },
+    { codigo: 6223, nome: "HB20S 1.0" },
+    { codigo: 6224, nome: "HB20S 1.0 Turbo" },
+    { codigo: 6460, nome: "Creta 1.0 Turbo" },
+    { codigo: 6461, nome: "Creta 2.0" },
+    { codigo: 6580, nome: "Tucson 1.6 Turbo" },
+    { codigo: 6581, nome: "Tucson 2.0" },
+    { codigo: 6750, nome: "Santa Fe 2.0 Turbo" },
+    { codigo: 6751, nome: "Santa Fe 3.5 V6" }
+  ]
+};
+
 function filterValidYears(years: Year[]): Year[] {
   return years.filter(year => {
     const yearMatch = year.codigo.match(/^(\d+)/);
@@ -227,12 +340,23 @@ export function useFipeApi(vehicleType: VehicleType) {
       setFilteredModels(models);
     } catch (e) {
       console.error('fetchModels error:', e);
-      setAllModels([]);
-      setFilteredModels([]);
-      const details = e instanceof Error ? e.message : 'unknown';
-      const msg = `Erro ao carregar modelos (${details}). Tente novamente.`;
-      setError(msg);
-      toast({ title: 'Erro', description: msg, variant: 'destructive' });
+      // Fallback to popular models when API fails
+      const fallbackModels = FALLBACK_MODELS[brandCode];
+      if (fallbackModels && fallbackModels.length > 0) {
+        setAllModels(fallbackModels);
+        setFilteredModels(fallbackModels);
+        toast({
+          title: 'Aviso',
+          description: 'API indisponível. Mostrando modelos principais.',
+        });
+      } else {
+        setAllModels([]);
+        setFilteredModels([]);
+        const details = e instanceof Error ? e.message : 'unknown';
+        const msg = `Erro ao carregar modelos (${details}). Tente novamente.`;
+        setError(msg);
+        toast({ title: 'Erro', description: msg, variant: 'destructive' });
+      }
     } finally {
       setLoading(false);
     }
