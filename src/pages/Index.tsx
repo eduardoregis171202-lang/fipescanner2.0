@@ -1,29 +1,27 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Header } from '@/components/fipe/Header';
 import { Navigation } from '@/components/fipe/Navigation';
-import { FipeEvaluator } from '@/components/fipe/FipeEvaluator';
+import { FipeSearch } from '@/components/fipe/FipeSearch';
 import { DetranHub } from '@/components/fipe/DetranHub';
-import { CompareList } from '@/components/fipe/CompareList';
+import { CompareBar } from '@/components/fipe/CompareBar';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { HistoryItem, FipeHistoryItem } from '@/lib/constants';
-
-type TabType = 'evaluator' | 'search';
+import { TabType, FipeHistoryItem, DetranHistoryItem } from '@/lib/constants';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<TabType>('evaluator');
   const { isDark, toggle: toggleDark } = useDarkMode();
   const isOnline = useOnlineStatus();
 
-  // Detran History
-  const [detranHistory, setDetranHistory] = useState<HistoryItem[]>(() => {
-    const saved = localStorage.getItem('detran_history');
-    return saved ? JSON.parse(saved) : [];
-  });
-
   // FIPE History
   const [fipeHistory, setFipeHistory] = useState<FipeHistoryItem[]>(() => {
     const saved = localStorage.getItem('fipe_history');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Detran History
+  const [detranHistory, setDetranHistory] = useState<DetranHistoryItem[]>(() => {
+    const saved = localStorage.getItem('detran_history');
     return saved ? JSON.parse(saved) : [];
   });
 
@@ -33,34 +31,22 @@ const Index = () => {
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Track last saved FIPE result to avoid duplicates
-  const lastSavedFipe = useRef<string | null>(null);
+  // Persist FIPE history
+  useEffect(() => {
+    localStorage.setItem('fipe_history', JSON.stringify(fipeHistory));
+  }, [fipeHistory]);
 
   // Persist Detran history
   useEffect(() => {
     localStorage.setItem('detran_history', JSON.stringify(detranHistory));
   }, [detranHistory]);
 
-  // Persist FIPE history
-  useEffect(() => {
-    localStorage.setItem('fipe_history', JSON.stringify(fipeHistory));
-  }, [fipeHistory]);
-
   // Persist Compare list
   useEffect(() => {
     localStorage.setItem('compare_list', JSON.stringify(compareList));
   }, [compareList]);
 
-  const handleDetranHistoryUpdate = (items: HistoryItem[]) => {
-    setDetranHistory(items);
-  };
-
   const handleFipeSave = (item: FipeHistoryItem) => {
-    // Avoid duplicate saves
-    const key = `${item.codigoFipe}-${item.year}`;
-    if (lastSavedFipe.current === key) return;
-    lastSavedFipe.current = key;
-
     setFipeHistory(prev => {
       const filtered = prev.filter(h => 
         !(h.codigoFipe === item.codigoFipe && h.year === item.year)
@@ -71,12 +57,14 @@ const Index = () => {
 
   const handleClearFipeHistory = () => {
     setFipeHistory([]);
-    lastSavedFipe.current = null;
+  };
+
+  const handleDetranHistoryUpdate = (items: DetranHistoryItem[]) => {
+    setDetranHistory(items);
   };
 
   const handleAddToCompare = (item: FipeHistoryItem) => {
     setCompareList(prev => {
-      // Already in list?
       const exists = prev.some(c => 
         c.codigoFipe === item.codigoFipe && c.year === item.year
       );
@@ -99,7 +87,7 @@ const Index = () => {
 
       <main className="flex-1 overflow-y-auto pb-24 hide-scrollbar">
         {activeTab === 'evaluator' ? (
-          <FipeEvaluator 
+          <FipeSearch 
             onSaveToHistory={handleFipeSave}
             history={fipeHistory}
             onClearHistory={handleClearFipeHistory}
@@ -116,8 +104,7 @@ const Index = () => {
 
       <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      {/* Compare List Floating Bar */}
-      <CompareList
+      <CompareBar
         items={compareList}
         onRemove={handleRemoveFromCompare}
         onClear={handleClearCompare}

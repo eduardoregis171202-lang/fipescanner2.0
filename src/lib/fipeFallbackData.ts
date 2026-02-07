@@ -4,7 +4,7 @@
 
 import { Brand, VehicleType } from './constants';
 
-export const FALLBACK_BRANDS: Record<VehicleType, Brand[]> = {
+export const FALLBACK_BRANDS: Record<string, Brand[]> = {
   carros: [
     { codigo: "1", nome: "Acura" },
     { codigo: "2", nome: "Agrale" },
