@@ -14,6 +14,7 @@ export function useFipeApi(vehicleType: VehicleType) {
   const [selectedBrand, setSelectedBrand] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
   const [selectedYear, setSelectedYear] = useState('');
+  const [yearValidated, setYearValidated] = useState(false); // Flag para validação do ano
 
   // Reset quando muda tipo de veículo
   const resetSelections = useCallback(() => {
@@ -139,32 +140,47 @@ export function useFipeApi(vehicleType: VehicleType) {
     }
   }, [selectedModel, selectedBrand, fetchModelYears]);
 
+  // Resetar validação quando modelo muda
+  useEffect(() => {
+    setYearValidated(false);
+  }, [selectedModel]);
+
   // Validar ano selecionado quando anos específicos do modelo carregam
   useEffect(() => {
-    if (modelYears.length > 0 && selectedYear) {
-      const yearExists = modelYears.some(y => y.codigo === selectedYear);
-      if (!yearExists) {
-        // Ano pré-selecionado não disponível para este modelo
-        setSelectedYear('');
-        toast({ 
-          title: 'Atenção', 
-          description: 'O ano selecionado não está disponível para este modelo.',
-          variant: 'destructive'
-        });
+    if (selectedModel && modelYears.length > 0) {
+      if (selectedYear) {
+        const yearExists = modelYears.some(y => y.codigo === selectedYear);
+        if (!yearExists) {
+          // Ano pré-selecionado não disponível para este modelo
+          setSelectedYear('');
+          toast({ 
+            title: 'Atenção', 
+            description: 'O ano selecionado não está disponível para este modelo. Selecione outro ano.',
+            variant: 'destructive'
+          });
+        } else {
+          setYearValidated(true);
+        }
+      }
+      // Se não há ano selecionado, marcar como validado (usuário vai selecionar)
+      if (!selectedYear) {
+        setYearValidated(true);
       }
     }
-  }, [modelYears, selectedYear]);
+  }, [modelYears, selectedYear, selectedModel]);
 
-  // Buscar resultado quando modelo e ano estiverem selecionados
+  // Buscar resultado APENAS quando:
+  // 1. Modelo e ano estiverem selecionados
+  // 2. Anos do modelo já foram carregados
+  // 3. O ano foi validado como disponível para o modelo
   useEffect(() => {
-    if (selectedModel && selectedYear) {
-      // Verificar se o ano está nos anos específicos do modelo
-      const yearValid = modelYears.length === 0 || modelYears.some(y => y.codigo === selectedYear);
+    if (selectedModel && selectedYear && yearValidated && modelYears.length > 0) {
+      const yearValid = modelYears.some(y => y.codigo === selectedYear);
       if (yearValid) {
         fetchResult(selectedBrand, selectedModel, selectedYear);
       }
     }
-  }, [selectedYear, selectedBrand, selectedModel, modelYears, fetchResult]);
+  }, [selectedYear, selectedBrand, selectedModel, modelYears, yearValidated, fetchResult]);
 
   // Anos disponíveis: se modelo selecionado, usar modelYears; senão, usar years gerais
   const availableYears = selectedModel && modelYears.length > 0 ? modelYears : years;
