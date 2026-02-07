@@ -73,7 +73,7 @@ export const PLATE_RANGES = [
 
 export const API_BASE = "https://parallelum.com.br/fipe/api/v1";
 
-export type VehicleType = 'carros' | 'motos' | 'caminhoes';
+export type VehicleType = 'carros' | 'motos';
 
 export interface Brand {
   codigo: string;
