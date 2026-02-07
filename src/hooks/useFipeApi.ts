@@ -29,10 +29,14 @@ async function fetchWithRetry(url: string, retries = 3, delayMs = 300): Promise<
     try {
       const res = await fetch(url);
       if (res.ok) return res;
-      if (res.status === 429) {
+
+      // Retry em rate limit e falhas temporárias
+      const retryable = res.status === 429 || res.status === 408 || res.status === 502 || res.status === 503 || res.status === 504;
+      if (retryable) {
         await delay(delayMs * (i + 2));
         continue;
       }
+
       return res;
     } catch (e) {
       console.error(`Fetch attempt ${i + 1} failed:`, e);
