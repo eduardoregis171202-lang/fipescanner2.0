@@ -73,8 +73,6 @@ const vehicleTypeToV2 = (vehicleType: VehicleType) => {
       return 'cars' as const;
     case 'motos':
       return 'motorcycles' as const;
-    case 'caminhoes':
-      return 'trucks' as const;
   }
 };
 

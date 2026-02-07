@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Car, Bike, Truck, Loader2, Share2, Copy, Check, Scale } from 'lucide-react';
+import { Car, Bike, Loader2, Share2, Copy, Check, Scale } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useFipeApi } from '@/hooks/useFipeApi';
@@ -141,8 +141,7 @@ export function FipeEvaluator({
 
   const vehicleTypes: { type: VehicleType; label: string; icon: React.ReactNode }[] = [
     { type: 'carros', label: 'Carros', icon: <Car className="w-4 h-4" /> },
-    { type: 'motos', label: 'Motos', icon: <Bike className="w-4 h-4" /> },
-    { type: 'caminhoes', label: 'Caminhões', icon: <Truck className="w-4 h-4" /> }
+    { type: 'motos', label: 'Motos', icon: <Bike className="w-4 h-4" /> }
   ];
 
   return (
