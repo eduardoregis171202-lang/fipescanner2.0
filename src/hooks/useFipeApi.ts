@@ -64,6 +64,28 @@ export function useFipeApi(vehicleType: VehicleType) {
 
   const yearsCache = useRef<Record<string, Year[]>>({});
 
+  const canUseLocalStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+  const readCache = <T,>(key: string): T | null => {
+    if (!canUseLocalStorage()) return null;
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return null;
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
+  };
+  const writeCache = (key: string, value: unknown) => {
+    if (!canUseLocalStorage()) return;
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // ignore quota/private mode
+    }
+  };
+
+  const brandsCacheKey = `fipe_cache:brands:${vehicleType}`;
+
   const resetSelections = useCallback(() => {
     setSelectedBrand('');
     setSelectedModel('');
@@ -81,20 +103,42 @@ export function useFipeApi(vehicleType: VehicleType) {
   const fetchBrands = useCallback(async () => {
     setLoading(true);
     setError(null);
+
     try {
-      const res = await fetchWithRetry(`${API_BASE}/${vehicleType}/marcas`);
-      if (!res || !res.ok) throw new Error('Erro ao carregar marcas');
+      const url = `${API_BASE}/${vehicleType}/marcas`;
+      const res = await fetchWithRetry(url);
+
+      if (!res) {
+        throw new Error('no_response');
+      }
+      if (!res.ok) {
+        throw new Error(`http_${res.status}`);
+      }
+
       const data = await res.json();
-      setBrands(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? (data as Brand[]) : [];
+      setBrands(list);
+      writeCache(brandsCacheKey, list);
     } catch (e) {
-      console.error('fetchBrands error:', e);
-      const msg = 'Erro ao carregar marcas. Tente novamente.';
-      setError(msg);
-      toast({ title: 'Erro', description: msg, variant: 'destructive' });
+      // Fallback: usar cache local para não ficar sem marcas
+      const cached = readCache<Brand[]>(brandsCacheKey);
+      if (cached && cached.length > 0) {
+        setBrands(cached);
+        toast({
+          title: 'Aviso',
+          description: 'Não foi possível atualizar as marcas agora. Mostrando lista em cache.',
+        });
+      } else {
+        console.error('fetchBrands error:', e);
+        const details = e instanceof Error ? e.message : 'unknown';
+        const msg = `Erro ao carregar marcas (${details}). Tente novamente.`;
+        setError(msg);
+        toast({ title: 'Erro', description: msg, variant: 'destructive' });
+      }
     } finally {
       setLoading(false);
     }
-  }, [vehicleType]);
+  }, [vehicleType, brandsCacheKey]);
 
   const fetchModels = useCallback(async (brandCode: string) => {
     if (!brandCode) {
