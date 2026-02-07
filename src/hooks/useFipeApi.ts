@@ -208,18 +208,29 @@ export function useFipeApi(vehicleType: VehicleType) {
     }
     setLoading(true);
     setError(null);
+    
+    // Sempre gerar anos, mesmo se modelos falharem
+    setYears(generateAllYears());
+    yearsCache.current = {};
+    
     try {
-      const res = await fetchWithRetry(`${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos`);
-      if (!res || !res.ok) throw new Error('Erro ao carregar modelos');
+      const res = await fetchWithRetry(`${API_BASE}/${vehicleType}/marcas/${brandCode}/modelos`, 3, 500);
+      if (!res) {
+        throw new Error('no_response');
+      }
+      if (!res.ok) {
+        throw new Error(`http_${res.status}`);
+      }
       const data = await res.json();
       const models = data.modelos || [];
       setAllModels(models);
       setFilteredModels(models);
-      setYears(generateAllYears());
-      yearsCache.current = {};
     } catch (e) {
       console.error('fetchModels error:', e);
-      const msg = 'Erro ao carregar modelos. Tente novamente.';
+      setAllModels([]);
+      setFilteredModels([]);
+      const details = e instanceof Error ? e.message : 'unknown';
+      const msg = `Erro ao carregar modelos (${details}). Tente novamente.`;
       setError(msg);
       toast({ title: 'Erro', description: msg, variant: 'destructive' });
     } finally {
