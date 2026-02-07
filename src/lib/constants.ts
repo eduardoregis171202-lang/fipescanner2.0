@@ -73,7 +73,11 @@ export const PLATE_RANGES = [
 
 export const API_BASE = "https://parallelum.com.br/fipe/api/v1";
 
-export type VehicleType = 'carros' | 'motos';
+export const UF_LIST = Object.keys(DETRAN_URLS).sort();
+
+export type VehicleType = 'carros' | 'motos' | 'caminhoes';
+
+export type TabType = 'evaluator' | 'detran';
 
 export interface Brand {
   codigo: string;
@@ -108,6 +112,12 @@ export interface HistoryItem {
   timestamp: number;
 }
 
+export interface DetranHistoryItem {
+  plate: string;
+  uf: string;
+  timestamp: number;
+}
+
 export interface FipeHistoryItem {
   brand: string;
   model: string;
@@ -115,4 +125,42 @@ export interface FipeHistoryItem {
   value: string;
   codigoFipe: string;
   timestamp: number;
+}
+
+export interface ChecklistItem {
+  id: string;
+  title: string;
+  description: string;
+  checked: boolean;
+}
+
+export const CHECKLIST_ITEMS_DATA = [
+  { id: 'crlv', title: 'Documento do veículo (CRLV)', description: 'Verifique se o CRV/CRLV está em nome do vendedor e sem rasuras' },
+  { id: 'debitos', title: 'Verificar débitos (IPVA/Multas)', description: 'Consulte se há IPVA atrasado, multas pendentes ou licenciamento em aberto' },
+  { id: 'restricoes', title: 'Consultar restrições', description: 'Verifique se o veículo possui alienação fiduciária, roubo/furto ou recall pendente' },
+  { id: 'cnh', title: 'CNH do comprador e vendedor', description: 'Ambas devem estar válidas e com foto recente' },
+  { id: 'cartorio', title: 'Reconhecer firma no cartório', description: 'Assinaturas do CRV devem ser reconhecidas em cartório' },
+  { id: 'transferencia', title: 'Transferência no DETRAN', description: 'Realize a transferência em até 30 dias para evitar multas' }
+];
+
+export function detectUfFromPlate(plate: string): string {
+  if (plate.length < 3) return '';
+  const prefix = plate.substring(0, 3).toUpperCase();
+  const match = PLATE_RANGES.find(r => prefix >= r.start && prefix <= r.end);
+  return match?.uf || '';
+}
+
+export function formatCurrency(value: number): string {
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+export function parseCurrency(value: string): number {
+  return parseFloat(value.replace(/[^\d]/g, '')) / 100 || 0;
+}
+
+export function formatCurrencyInput(value: string): string {
+  const numbers = value.replace(/\D/g, '');
+  if (!numbers) return '';
+  const amount = parseInt(numbers, 10) / 100;
+  return amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
