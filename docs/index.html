@@ -2152,8 +2152,8 @@
         state.priceChart.destroy();
       }
       
-      const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
-      const chartColor = `hsl(${primaryColor})`;
+      // Use fixed color to avoid HSL parsing issues
+      const chartColor = '#3b82f6';
       
       state.priceChart = new Chart(ctx, {
         type: 'line',
@@ -2163,7 +2163,7 @@
             label: 'Valor FIPE',
             data: data.map(d => d.value),
             borderColor: chartColor,
-            backgroundColor: chartColor.replace(')', ', 0.1)').replace('hsl', 'hsla'),
+            backgroundColor: 'rgba(59, 130, 246, 0.15)',
             fill: true,
             tension: 0.4,
             pointRadius: 0,
