@@ -2122,7 +2122,8 @@
       if (!state.result) return;
       
       const currentValue = parseCurrency(state.result.Valor);
-      const data = generatePriceHistory(currentValue);
+      const seedKey = `${state.result.CodigoFipe || ''}-${state.result.Modelo || ''}-${state.result.AnoModelo || ''}`;
+      const data = generatePriceHistory(currentValue, seedKey);
       
       // Calculate trend
       const firstValue = data[0].value;
@@ -2198,35 +2199,63 @@
       });
     }
 
-    function generatePriceHistory(currentValue) {
+    // Deterministic RNG (stable per vehicle)
+    function seededRandom(seed) {
+      const x = Math.sin(seed) * 10000;
+      return x - Math.floor(x);
+    }
+
+    function hashString(str) {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+      }
+      return Math.abs(hash);
+    }
+
+    function clamp(n, min, max) {
+      return Math.max(min, Math.min(max, n));
+    }
+
+    // Simula 12 meses com variação única por veículo (sem “formato igual”)
+    // Observação: a API FIPE não fornece histórico real; isso é uma simulação determinística.
+    function generatePriceHistory(currentValue, seedKey, months = 12) {
       const data = [];
       const now = new Date();
-      
-      let price = currentValue;
-      
-      for (let i = 11; i >= 0; i--) {
-        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+
+      const baseSeed = hashString(String(seedKey || 'default'));
+
+      // Drift e volatilidade variam por veículo
+      const drift = seededRandom(baseSeed + 101) * 0.012 - 0.006; // -0,6% .. +0,6% ao mês
+      const volatility = 0.008 + seededRandom(baseSeed + 202) * 0.012; // 0,8% .. 2,0%
+
+      const prices = new Array(months);
+      prices[months - 1] = currentValue;
+
+      // Gera valores passados “voltando no tempo” a partir do valor atual
+      for (let i = months - 2; i >= 0; i--) {
+        const r = seededRandom(baseSeed + i * 7919);
+        const shock = (r - 0.5) * 2 * volatility;
+        const delta = clamp(drift + shock, -0.015, 0.02); // -1,5% .. +2,0%
+        const forwardVariation = 1 + delta;
+
+        // preço do mês anterior (voltando) = preço do mês seguinte / variação (indo)
+        prices[i] = Math.max(1, prices[i + 1] / forwardVariation);
+      }
+
+      for (let i = 0; i < months; i++) {
+        const date = new Date(now.getFullYear(), now.getMonth() - (months - 1 - i), 1);
         const monthName = date.toLocaleDateString('pt-BR', { month: 'short' });
         const year = date.getFullYear().toString().slice(-2);
-        
-        if (i === 0) {
-          price = currentValue;
-        } else {
-          const variation = 1 + (Math.random() * 0.025 - 0.005);
-          price = price * variation;
-        }
-        
+
         data.push({
           month: `${monthName}/${year}`,
-          value: Math.round(price)
+          value: Math.round(prices[i])
         });
       }
-      
-      return data.sort((a, b) => {
-        const [mA, yA] = a.month.split('/');
-        const [mB, yB] = b.month.split('/');
-        return parseInt(yA) - parseInt(yB) || data.indexOf(a) - data.indexOf(b);
-      });
+
+      return data;
     }
 
     // ============= PRICE COMPARISON =============
