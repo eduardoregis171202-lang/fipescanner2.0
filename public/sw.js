@@ -1,6 +1,6 @@
-const CACHE_NAME = 'fipe-scanner-v1';
-const STATIC_CACHE = 'fipe-static-v1';
-const API_CACHE = 'fipe-api-v1';
+const CACHE_NAME = 'fipe-scanner-v2';
+const STATIC_CACHE = 'fipe-static-v2';
+const API_CACHE = 'fipe-api-v2';
 
 const STATIC_ASSETS = [
   '/',
@@ -40,23 +40,38 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   // API requests - Network First with Cache Fallback
+  // IMPORTANTE: sempre retornar uma Response válida (mesmo sem cache), senão o fetch do app falha.
   if (url.origin === 'https://parallelum.com.br') {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
+      (async () => {
+        try {
+          const response = await fetch(request);
+
           // Clone and cache successful responses
-          if (response.ok) {
+          if (response && response.ok) {
             const clonedResponse = response.clone();
-            caches.open(API_CACHE).then((cache) => {
-              cache.put(request, clonedResponse);
-            });
+            try {
+              const cache = await caches.open(API_CACHE);
+              await cache.put(request, clonedResponse);
+            } catch (e) {
+              // Cache pode falhar (ex: resposta opaque) - não deve quebrar a navegação
+              console.warn('API cache put failed:', e);
+            }
           }
+
           return response;
-        })
-        .catch(() => {
+        } catch (e) {
           // Fallback to cache when offline
-          return caches.match(request);
-        })
+          const cached = await caches.match(request);
+          if (cached) return cached;
+
+          // Sem cache: retornar erro JSON (evita Promise rejeitada/Response undefined)
+          return new Response(JSON.stringify({ error: 'offline_or_blocked' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+      })()
     );
     return;
   }
