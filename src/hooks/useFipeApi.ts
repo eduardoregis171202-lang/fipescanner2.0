@@ -2,12 +2,12 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { API_BASE, Brand, Model, Year, FipeResult, VehicleType } from '@/lib/constants';
 import { toast } from '@/hooks/use-toast';
 
+// Constantes de anos válidos
+const MIN_YEAR = 1980;
+const MAX_YEAR = new Date().getFullYear() + 1; // Permite veículos do próximo ano
+
 // Filtra anos inválidos (ex: 32000) - mantém apenas anos entre 1980 e ano atual + 1
 function filterValidYears(years: Year[]): Year[] {
-  const currentYear = new Date().getFullYear();
-  const minYear = 1980;
-  const maxYear = currentYear + 1; // Permite veículos do próximo ano
-  
   return years.filter(year => {
     // Extrai o número do ano do código (ex: "2024-1" -> 2024)
     const yearMatch = year.codigo.match(/^(\d+)/);
@@ -16,8 +16,24 @@ function filterValidYears(years: Year[]): Year[] {
     const yearNumber = parseInt(yearMatch[1], 10);
     
     // Verifica se é um ano válido
-    return yearNumber >= minYear && yearNumber <= maxYear;
+    return yearNumber >= MIN_YEAR && yearNumber <= MAX_YEAR;
   });
+}
+
+// Gera lista completa de anos para seleção inicial (quando só a marca foi escolhida)
+// A API FIPE retorna dados incompletos a nível de marca, então geramos todos os anos possíveis
+function generateAllYears(): Year[] {
+  const years: Year[] = [];
+  
+  // Gera anos do mais recente ao mais antigo
+  for (let year = MAX_YEAR; year >= MIN_YEAR; year--) {
+    // Adiciona variações comuns de combustível
+    years.push({ codigo: `${year}-1`, nome: `${year} Gasolina` });
+    years.push({ codigo: `${year}-2`, nome: `${year} Álcool` });
+    years.push({ codigo: `${year}-3`, nome: `${year} Diesel` });
+  }
+  
+  return years;
 }
 
 export function useFipeApi(vehicleType: VehicleType) {
@@ -78,9 +94,9 @@ export function useFipeApi(vehicleType: VehicleType) {
       if (!res.ok) throw new Error('Erro ao carregar modelos');
       const data = await res.json();
       setModels(data.modelos || []);
-      // A API retorna anos disponíveis para a marca também - filtrar anos inválidos
-      const rawYears = Array.isArray(data.anos) ? data.anos : [];
-      setYears(filterValidYears(rawYears));
+      // Usar lista completa de anos - os dados da API a nível de marca são incompletos
+      // A validação real acontece quando modelo + ano são selecionados
+      setYears(generateAllYears());
     } catch (e) {
       const msg = 'Erro ao carregar modelos. Tente novamente.';
       setError(msg);
